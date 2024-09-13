@@ -7,10 +7,14 @@ export function App() {
   return (
     <ProvideQueryClient>
       <ProvideNavigation>
-        <Flex full direction="column">
-          <TopBar />
-        </Flex>
+        <Body />
       </ProvideNavigation>
     </ProvideQueryClient>
   );
 }
+
+const Body: React.FC = () => (
+  <Flex full direction="column">
+    <TopBar />
+  </Flex>
+);
