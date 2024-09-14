@@ -2,10 +2,11 @@ const BASE_URL = 'http://127.0.0.1:8080';
 
 export type HttpRequestArgs = {
   path: string;
-  authorization: string;
+  authorization: string | null;
 } & (
   | {
       method: 'GET';
+      body?: null | undefined;
     }
   | {
       method: 'POST';
@@ -33,10 +34,10 @@ export async function httpRequest<D>(args: HttpRequestArgs): Promise<HttpRespons
       method,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': authorization,
+        ...(authorization && { 'Authorization': authorization }),
       },
       ...(method === 'POST' && {
-        body: JSON.stringify(rest),
+        body: JSON.stringify(rest.body),
       }),
     });
     const data = await response.json();

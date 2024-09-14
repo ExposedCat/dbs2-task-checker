@@ -1,7 +1,6 @@
-import { TopBar } from '~/components/TopBar';
-import { ProvideQueryClient } from './components/QueryClient.js';
-import { ProvideNavigation } from './components/Navigation.js';
-import { Flex } from './components/Flex.js';
+import { ProvideQueryClient } from './providers/QueryClientProvider.js';
+import { ProvideNavigation } from './providers/NavigationProvider.js';
+import { Body } from './components/partials/Body.js';
 
 export function App() {
   return (
@@ -12,9 +11,3 @@ export function App() {
     </ProvideQueryClient>
   );
 }
-
-const Body: React.FC = () => (
-  <Flex full direction="column">
-    <TopBar />
-  </Flex>
-);

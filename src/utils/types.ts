@@ -1,3 +1,3 @@
-import type { RecipeRuntimeFn, RecipeVariantRecord } from '../../public/styled-system/types';
+import type { RecipeRuntimeFn, RecipeVariantRecord } from '@styled-system/types/recipe.mjs';
 
 export type PropsFromCVA<T extends RecipeRuntimeFn<RecipeVariantRecord>> = Exclude<Parameters<T>['0'], undefined>;

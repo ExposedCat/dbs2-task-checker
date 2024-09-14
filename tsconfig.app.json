@@ -22,7 +22,8 @@
     "rootDir": "./src",
     "paths": {
       "~/*": ["./src/*"],
+      "@styled-system/*": ["./public/styled-system/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

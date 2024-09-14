@@ -1,8 +1,9 @@
-import type { PropsFromCVA } from '../utils/types.ts';
-import { type FlexProps as _FlexProps } from '../../public/styled-system/jsx/flex.mjs';
-import { Flex as _Flex } from '../../public/styled-system/jsx/flex.mjs';
-import { cx } from '../../public/styled-system/css/cx.mjs';
-import { cva } from '../../public/styled-system/css/cva.mjs';
+import { Flex as _Flex } from '@styled-system/jsx/flex.mjs';
+import type { FlexProps as _FlexProps } from '@styled-system/jsx/flex.mjs';
+import { cx } from '@styled-system/css/cx.mjs';
+import { cva } from '@styled-system/css/cva.mjs';
+
+import type { PropsFromCVA } from '~/utils/types.js';
 
 const flexRecipe = cva({
   variants: {

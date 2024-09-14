@@ -119,6 +119,7 @@
         "pathGroups": [
           { "pattern": "./**", "group": "parent" },
           { "pattern": "~/**", "group": "parent" },
+          { "pattern": "@/**", "group": "parent" },
           {
             "pattern": "react",
             "group": "external",

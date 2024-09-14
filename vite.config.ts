@@ -9,7 +9,6 @@ export default defineConfig(({ mode }) => {
     alias: {
       '~': path.resolve(__dirname, './src'),
       '@styled-system': path.resolve(__dirname, './public/styled-system'),
-      'stream/web': 'web-streams-polyfill',
     },
   };
 

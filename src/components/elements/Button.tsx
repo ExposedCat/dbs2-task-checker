@@ -1,9 +1,9 @@
 import React from 'react';
+import { cx } from '@styled-system/css/cx.mjs';
+import { css } from '@styled-system/css/css.mjs';
 
 import { hoverStyles, type HoverColorStylesProps } from '~/recipes/hover.js';
 import { colorStyles } from '~/recipes/colors';
-import { cx } from '../../public/styled-system/css/cx.mjs';
-import { css } from '../../public/styled-system/css/css.mjs';
 
 export type ButtonProps = React.HTMLAttributes<HTMLButtonElement> &
   HoverColorStylesProps & {

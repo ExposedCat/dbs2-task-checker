@@ -1,8 +1,9 @@
 import React from 'react';
 
 import { httpRequest } from '~/services/http.js';
+import { useSessionToken } from './useSessionToken.js';
 
-export type UseRequestResult<D> =
+export type UseGetRequestResult<D> =
   | {
       state: 'loading';
       data: null;
@@ -19,16 +20,17 @@ export type UseRequestResult<D> =
       error: unknown;
     };
 
-export function useRequest<D>(path: string): UseRequestResult<D> {
+export function useGetRequest<D>(path: string): UseGetRequestResult<D> {
   const [state, setState] = React.useState<'loading' | 'success' | 'error'>('loading');
   const [data, setData] = React.useState<D | null>(null);
   const [error, setError] = React.useState<unknown | null>(null);
+  const token = useSessionToken();
 
   React.useEffect(() => {
     void httpRequest<D>({
       method: 'GET',
       path,
-      authorization: '',
+      authorization: token,
       // eslint-disable-next-line github/no-then
     }).then(response => {
       setState(response.ok ? 'success' : 'error');
@@ -38,7 +40,7 @@ export function useRequest<D>(path: string): UseRequestResult<D> {
         setError(response.error);
       }
     });
-  }, [path]);
+  }, [path, token]);
 
-  return { state, data, error } as UseRequestResult<D>;
+  return { state, data, error } as UseGetRequestResult<D>;
 }
