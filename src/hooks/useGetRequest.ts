@@ -3,7 +3,9 @@ import React from 'react';
 import { httpRequest } from '~/services/http.js';
 import { useSessionToken } from './useSessionToken.js';
 
-export type UseGetRequestResult<D> =
+export type UseGetRequestResult<D> = {
+  refetch: () => void;
+} & (
   | {
       state: 'loading';
       data: null;
@@ -18,15 +20,19 @@ export type UseGetRequestResult<D> =
       state: 'error';
       data: null;
       error: unknown;
-    };
+    }
+);
 
-export function useGetRequest<D>(path: string): UseGetRequestResult<D> {
+export function useGetRequest<D>(path: string, executeImmediately = true): UseGetRequestResult<D> {
   const [state, setState] = React.useState<'loading' | 'success' | 'error'>('loading');
   const [data, setData] = React.useState<D | null>(null);
   const [error, setError] = React.useState<unknown | null>(null);
+
+  const immediatelyExecutedRef = React.useRef(!executeImmediately);
+
   const token = useSessionToken();
 
-  React.useEffect(() => {
+  const refetch = React.useCallback(() => {
     void httpRequest<D>({
       method: 'GET',
       path,
@@ -42,5 +48,12 @@ export function useGetRequest<D>(path: string): UseGetRequestResult<D> {
     });
   }, [path, token]);
 
-  return { state, data, error } as UseGetRequestResult<D>;
+  React.useEffect(() => {
+    if (!immediatelyExecutedRef.current) {
+      immediatelyExecutedRef.current = true;
+      refetch();
+    }
+  }, [refetch]);
+
+  return { state, data, error, refetch } as UseGetRequestResult<D>;
 }

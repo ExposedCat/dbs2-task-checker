@@ -19,7 +19,7 @@ export const Body: React.FC = () => {
       {query.state === 'loading' && 'Loading...'}
       {query.state === 'error' && <UnauthorizedBody />}
       {query.state === 'success' && (
-        <ProvideSession value={query.data}>
+        <ProvideSession value={{ session: query.data, refetch: query.refetch }}>
           <AuthorizedBody />
         </ProvideSession>
       )}

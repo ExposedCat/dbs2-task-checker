@@ -11,4 +11,7 @@ export type Session = {
   } | null;
 };
 
-export const { Provider: ProvideSession, useRequireValue: useSession } = buildProvider<Session>('ProvideSession', true);
+export const { Provider: ProvideSession, useRequireValue: useSession } = buildProvider<{
+  session: Session;
+  refetch: () => void;
+}>('ProvideSession', true);

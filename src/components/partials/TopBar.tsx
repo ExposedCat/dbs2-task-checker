@@ -8,7 +8,7 @@ import { Flex } from '~/components/elements/Flex.js';
 import { Button } from '~/components/elements/Button.js';
 
 export const TopBar: React.FC = () => {
-  const session = useSession();
+  const { session } = useSession();
   const datasets = useDatasets();
   const { currentDataset: dataset, selectDataset: update } = useNavigation();
 

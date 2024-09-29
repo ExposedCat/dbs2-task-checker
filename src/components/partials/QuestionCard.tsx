@@ -11,12 +11,23 @@ import { Badge } from '../elements/Badge.js';
 import { DownlloadDatasetButton } from './DownloadDatasetButton.js';
 
 export const QuestionCard: React.FC = () => {
-  const { testSession } = useSession();
+  const {
+    session: { testSession },
+    refetch: refetchSession,
+  } = useSession();
   const [solution, setSolution] = React.useState('');
 
   const query = usePostRequest<{ ok: boolean; response: string }>('/query');
 
   const handleExecute = React.useCallback(() => query.request({ query: solution }), [query, solution]);
+
+  React.useEffect(() => {
+    console.log(query);
+    if (query.state === 'success' && query.data.ok) {
+      refetchSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query.data, query.state, refetchSession]);
 
   if (!testSession) {
     return null;
