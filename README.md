@@ -1,6 +1,19 @@
-# TS + React + Vite + Panda CSS
+# CTU | DBS2 | Task Checker (Frontend)
 
-- TS for type-safety
-- React for reactive UI
-- Vite for robust development
-- [Panda CSS](https://panda-css.com/docs) for inline styles
+## Description
+
+This package is a frontend for the Task Checker application
+
+## Tech Stack
+
+- Language: **TypeScript (JavaScript)**
+- Runtime: **Browser**
+- Framework: **React.JS**
+- Dev tool: **Vite**
+- Runtime type validation: none (relies on server)
+- Style engine: **Panda CSS**
+- Icons: **react-icons** (Free FontAwesome pack)
+
+## License
+
+This code is licensed under the EUPL-1.2-only license
