@@ -2,8 +2,9 @@ import React from 'react';
 
 import { setSessionToken } from '~/services/session.js';
 import { usePostRequest } from '~/hooks/usePostRequest.js';
+import { Page } from '~/components/elements/Page.js';
+import { Label } from '~/components/elements/Label.js';
 import { Input } from '~/components/elements/Input.js';
-import { Flex } from '~/components/elements/Flex.js';
 import { Button } from '~/components/elements/Button.js';
 
 export function LoginPage() {
@@ -13,10 +14,11 @@ export function LoginPage() {
   const query = usePostRequest<{ token: string }>('/login', ({ token }) => setSessionToken(token));
 
   return (
-    <Flex direction="column" justify="center" align="center" gap="sm" full>
+    <Page>
       <Input placeholder="Login" type="text" onValueChange={setLogin} />
       <Input placeholder="Password" type="password" autoComplete="current-password" onValueChange={setPassword} />
+      {!!query.error && <Label text="Incorrect login and/or password" color="error" />}
       <Button label="Log In" onClick={() => query.request({ login, password })} />
-    </Flex>
+    </Page>
   );
 }

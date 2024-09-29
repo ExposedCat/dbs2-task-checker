@@ -6,6 +6,7 @@ import { useNavigation } from '~/providers/NavigationProvider.js';
 import { ProvideDatasets } from '~/providers/DatasetsProvider.js';
 import type { Dataset } from '~/providers/DatasetsProvider.js';
 import { LoginPage } from '~/pages/Login.js';
+import { DatasetPage } from '~/pages/Dataset.js';
 import { useGetRequest } from '~/hooks/useGetRequest.js';
 import { Flex } from '~/components/elements/Flex.js';
 import { TopBar } from './TopBar.js';
@@ -16,7 +17,7 @@ export const Body: React.FC = () => {
   return (
     <Flex full direction="column">
       {query.state === 'loading' && 'Loading...'}
-      {query.state === 'error' && <LoginPage />}
+      {query.state === 'error' && <UnauthorizedBody />}
       {query.state === 'success' && (
         <ProvideSession value={query.data}>
           <AuthorizedBody />
@@ -24,6 +25,10 @@ export const Body: React.FC = () => {
       )}
     </Flex>
   );
+};
+
+const UnauthorizedBody: React.FC = () => {
+  return <LoginPage />;
 };
 
 const AuthorizedBody: React.FC = () => {
@@ -44,6 +49,7 @@ const AuthorizedBody: React.FC = () => {
       {query.state === 'success' && (
         <ProvideDatasets value={query.data}>
           <TopBar />
+          <DatasetPage />
         </ProvideDatasets>
       )}
     </>

@@ -20,6 +20,10 @@ export default defineConfig({
   theme: {
     extend: {
       tokens: {
+        fonts: {
+          body: { value: 'Inter' },
+          mono: { value: 'JetBrainsMono' },
+        },
         radii: {
           common: { value: '6px' },
         },
@@ -88,6 +92,10 @@ export default defineConfig({
           container: {
             xs: { value: '40px' },
             sm: { value: '120px' },
+            md: { value: '240px' },
+            lg: { value: '480px' },
+            xl: { value: '600px' },
+            full: { value: '1000px' },
           },
         },
       },

@@ -1,1 +1,4 @@
 @layer reset, base, tokens, recipes, utilities;
+
+@import url(/fonts/inter.css);
+@import url(/fonts/jetbrains-mono.css);

@@ -1,9 +1,9 @@
 import React from 'react';
-import { css } from '@styled-system/css/css.mjs';
 
 import { useSession } from '~/providers/SessionProvider.js';
 import { useNavigation } from '~/providers/NavigationProvider.js';
 import { useDatasets } from '~/providers/DatasetsProvider.js';
+import { Logo } from '~/components/elements/Logo.js';
 import { Flex } from '~/components/elements/Flex.js';
 import { Button } from '~/components/elements/Button.js';
 
@@ -14,12 +14,7 @@ export const TopBar: React.FC = () => {
 
   return (
     <Flex justify="space-between" align="center" width="full" padding="sm" borderBottom="base">
-      <img
-        src="/cvut.jpg"
-        className={css({
-          maxWidth: 'container.sm',
-        })}
-      />
+      <Logo />
       <Flex gap="sm">
         {datasets.map((item, index) => (
           <Button

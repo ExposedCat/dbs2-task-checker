@@ -1,4 +1,4 @@
-const BASE_URL = 'http://127.0.0.1:8080';
+export const BASE_API_URL = 'http://127.0.0.1:8080';
 
 export type HttpRequestArgs = {
   path: string;
@@ -30,7 +30,7 @@ export async function httpRequest<D>(args: HttpRequestArgs): Promise<HttpRespons
   const { path, authorization, method, ...rest } = args;
 
   try {
-    const response = await fetch(`${BASE_URL}${path}`, {
+    const response = await fetch(`${BASE_API_URL}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
