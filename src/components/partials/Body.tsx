@@ -7,17 +7,25 @@ import { ProvideDatasets } from '~/providers/DatasetsProvider.js';
 import type { Dataset } from '~/providers/DatasetsProvider.js';
 import { LoginPage } from '~/pages/Login.js';
 import { DatasetPage } from '~/pages/Dataset.js';
+import { useSessionToken } from '~/hooks/useSessionToken.js';
 import { useGetRequest } from '~/hooks/useGetRequest.js';
 import { Flex } from '~/components/elements/Flex.js';
 import { TopBar } from './TopBar.js';
 
 export const Body: React.FC = () => {
   const query = useGetRequest<Session>('/session');
+  const token = useSessionToken();
+
+  React.useEffect(() => {
+    if (token && !query.data) {
+      query.refetch();
+    }
+  }, [token, query.data, query]);
 
   return (
     <Flex full direction="column">
       {query.state === 'loading' && 'Loading...'}
-      {query.state === 'error' && <UnauthorizedBody />}
+      {query.state === 'error' && <LoginPage />}
       {query.state === 'success' && (
         <ProvideSession value={{ session: query.data, refetch: query.refetch }}>
           <AuthorizedBody />
@@ -25,10 +33,6 @@ export const Body: React.FC = () => {
       )}
     </Flex>
   );
-};
-
-const UnauthorizedBody: React.FC = () => {
-  return <LoginPage />;
 };
 
 const AuthorizedBody: React.FC = () => {

@@ -11,7 +11,7 @@ export function LoginPage() {
   const [login, setLogin] = React.useState('');
   const [password, setPassword] = React.useState('');
 
-  const query = usePostRequest<{ data: string }>('/login', ({ data }) => setSessionToken(data));
+  const query = usePostRequest<string>('/login', setSessionToken);
 
   return (
     <Page>
