@@ -38,6 +38,5 @@ export default defineConfig(({ mode }) => {
     preview: mode === 'private' ? devPreviewServer : undefined,
     publicDir: './public',
     resolve,
-    envDir: './environment',
   } as UserConfig;
 });
