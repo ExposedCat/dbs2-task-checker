@@ -34,7 +34,7 @@ export const TopBar: React.FC = () => {
         width="container.xs"
         height="container.xs"
       >
-        {session.login[0]}
+        {session.login[4]}
       </Flex>
     </Flex>
   );
