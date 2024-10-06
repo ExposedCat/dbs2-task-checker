@@ -10,6 +10,7 @@ import { Label } from '../elements/Label.js';
 import { Card } from '../elements/Card.js';
 import { Button } from '../elements/Button.js';
 import { Badge } from '../elements/Badge.js';
+import { ErrorCard } from './ErrorCard.js';
 import { DownlloadDatasetButton } from './DownloadDatasetButton.js';
 
 const EmptyBody: React.FC = () => {
@@ -22,7 +23,7 @@ const EmptyBody: React.FC = () => {
     [currentDataset, datasets],
   );
 
-  const startSessionQuery = usePostRequest<{ ok: boolean }>('/test-session', ({ ok }) => ok && refetchSession());
+  const startSessionQuery = usePostRequest('/test-session', () => refetchSession());
 
   return (
     <Card maxWidth="container.full" gap="md">
@@ -32,23 +33,32 @@ const EmptyBody: React.FC = () => {
         label={`Start ${datasetName} Test`}
         onClick={() => startSessionQuery.request({ datasetId: currentDataset })}
       />
+      {startSessionQuery.state === 'error' && <ErrorCard error={startSessionQuery.error} />}
     </Card>
   );
 };
 
-const QuestionBody: React.FC = () => {
+type ResultCallback = (args: { correct: number; total: number } | null) => void;
+
+const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
   const {
     session: { testSession },
     refetch: refetchSession,
   } = useSession();
 
   const [solution, setSolution] = React.useState('');
-  const query = usePostRequest<{ ok: boolean; response: string }>('/query');
+
+  const query = usePostRequest<{ ok: boolean; response: string; result: number | null }>('/query', response => {
+    if (response.result !== null) {
+      onResult({ correct: response.result, total: testSession!.questionTotal });
+      refetchSession();
+    }
+  });
 
   const handleExecute = React.useCallback(() => query.request({ query: solution }), [query, solution]);
 
   React.useEffect(() => {
-    if (query.state === 'success' && query.data.ok) {
+    if (query.state === 'success') {
       refetchSession();
     }
   }, [query.data, query.state, refetchSession]);
@@ -69,16 +79,20 @@ const QuestionBody: React.FC = () => {
           <Button label="Execute" disabled={query.state === 'loading'} onClick={handleExecute} />
         </Flex>
       </Card>
-      {query.state === 'success' && !query.data.ok && (
-        <Card maxWidth="container.full">
-          <Label text={query.data.response} color="error" />
-        </Card>
-      )}
-      {query.state === 'error' && (
-        <Card maxWidth="container.full">
-          <Label text={query.error as string} color="error" />
-        </Card>
-      )}
+      {query.state === 'error' && <ErrorCard error={query.error} />}
+    </>
+  );
+};
+
+const ResultBody: React.FC<{ correct: number; total: number; onResult: ResultCallback }> = ({
+  correct,
+  total,
+  onResult,
+}) => {
+  return (
+    <>
+      <Label text={`Correct: ${correct}/${total}`} />
+      <Button label="Continue" onClick={() => onResult(null)} />
     </>
   );
 };
@@ -88,5 +102,11 @@ export const QuestionCard: React.FC = () => {
     session: { testSession },
   } = useSession();
 
-  return testSession ? <QuestionBody /> : <EmptyBody />;
+  const [result, setResult] = React.useState<{ correct: number; total: number } | null>(null);
+
+  if (result !== null) {
+    return <ResultBody {...result} onResult={setResult} />;
+  }
+
+  return testSession ? <QuestionBody onResult={setResult} /> : <EmptyBody />;
 };

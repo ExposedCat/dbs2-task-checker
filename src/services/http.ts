@@ -22,7 +22,7 @@ export type HttpResponse<D> =
     }
   | {
       ok: false;
-      error: unknown;
+      error: string;
       data: null;
     };
 
@@ -40,13 +40,17 @@ export async function httpRequest<D>(args: HttpRequestArgs): Promise<HttpRespons
         body: JSON.stringify(rest.body),
       }),
     });
-    const data = await response.json();
+    const data = (await response.json()) as HttpResponse<D>;
 
     if (!response.ok) {
-      return { ok: false, error: data, data: null };
+      return { ok: false, error: 'Unknown Error', data: null };
     }
-    return { ok: true, data, error: null };
+    return data;
   } catch (error) {
-    return { ok: false, error, data: null };
+    return {
+      ok: false,
+      error: (error as Error).message ?? (error as string),
+      data: null,
+    };
   }
 }
