@@ -38,7 +38,7 @@ const EmptyBody: React.FC = () => {
   );
 };
 
-type ResultCallback = (args: { correct: number; total: number } | null) => void;
+type ResultCallback = (args: { correct: number; total: number; wrong: string[] } | null) => void;
 
 const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
   const {
@@ -48,9 +48,14 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
 
   const [solution, setSolution] = React.useState('');
 
-  const query = usePostRequest<{ ok: boolean; response: string; result: number | null }>('/query', response => {
+  const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', response => {
+    console.log(response);
     if (response.result !== null) {
-      onResult({ correct: response.result, total: testSession!.questionTotal });
+      onResult({
+        correct: response.result,
+        total: testSession!.questionTotal,
+        wrong: response.wrong,
+      });
       refetchSession();
     }
   });
@@ -84,14 +89,24 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
   );
 };
 
-const ResultBody: React.FC<{ correct: number; total: number; onResult: ResultCallback }> = ({
+const ResultBody: React.FC<{ correct: number; total: number; wrong: string[]; onResult: ResultCallback }> = ({
   correct,
   total,
   onResult,
+  wrong,
 }) => {
   return (
     <>
       <Label text={`Correct: ${correct}/${total}`} />
+      {wrong.length === 0 && <Label text="You got it all right, congratulations!" />}
+      {wrong.length !== 0 && (
+        <Flex align="start" direction="column" paddingX="lg">
+          <Label text="You got these wrong:" />
+          {wrong.map((question, i) => (
+            <Label key={i} text={`- ${question}`} color="warning" />
+          ))}
+        </Flex>
+      )}
       <Button label="Continue" onClick={() => onResult(null)} />
     </>
   );
@@ -102,7 +117,7 @@ export const QuestionCard: React.FC = () => {
     session: { testSession },
   } = useSession();
 
-  const [result, setResult] = React.useState<{ correct: number; total: number } | null>(null);
+  const [result, setResult] = React.useState<{ correct: number; total: number; wrong: string[] } | null>(null);
 
   if (result !== null) {
     return <ResultBody {...result} onResult={setResult} />;
