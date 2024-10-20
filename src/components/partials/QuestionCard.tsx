@@ -14,7 +14,7 @@ import { ErrorCard } from './ErrorCard.js';
 import { DownlloadDatasetButton } from './DownloadDatasetButton.js';
 
 const EmptyBody: React.FC = () => {
-  const { refetch: refetchSession } = useSession();
+  const { session, refetch: refetchSession } = useSession();
   const { currentDataset } = useNavigation();
   const datasets = useDatasets();
 
@@ -25,12 +25,18 @@ const EmptyBody: React.FC = () => {
 
   const startSessionQuery = usePostRequest('/test-session', () => refetchSession());
 
+  const canStart = React.useMemo(
+    () => session.availableTests.includes(currentDataset!),
+    [currentDataset, session.availableTests],
+  );
+
   return (
     <Card maxWidth="container.full" gap="md">
       <Label text="During this test, you will be given a random set of tasks selected from various categories. Each task will require you to interact with a dataset, which will be loaded into your database before each submission. The dataset will remain the same throughout the test, so you can rely on its consistency as you work through the tasks" />
       <Label text="Your goal is to write queries that correctly solve each task based on the provided dataset. All your query submissions will be saved automatically and sent to your teacher for evaluation." />
       <Button
-        label={`Start ${datasetName} Test`}
+        disabled={!canStart}
+        label={canStart ? `Start ${datasetName} Test` : 'Test already passed'}
         onClick={() => startSessionQuery.request({ datasetId: currentDataset })}
       />
       {startSessionQuery.state === 'error' && <ErrorCard error={startSessionQuery.error} />}

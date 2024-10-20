@@ -9,6 +9,7 @@ export type Session = {
     questionNumber: number;
     questionTotal: number;
   } | null;
+  availableTests: string[];
 };
 
 export const { Provider: ProvideSession, useRequireValue: useSession } = buildProvider<{
