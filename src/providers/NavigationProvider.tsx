@@ -3,6 +3,7 @@ import React from 'react';
 import { buildProvider } from '~/utils/provider.js';
 
 export type NavigationContext = {
+  page: 'dataset' | 'admin';
   currentDataset: string | null;
   selectDataset: (data: Partial<Omit<NavigationContext, 'selectDataset'>>) => void;
 };
@@ -10,7 +11,7 @@ export type NavigationContext = {
 const { Provider, useRequireValue: useNavigation } = buildProvider<NavigationContext>('ProvideNavigation');
 
 export const ProvideNavigation: React.FC<React.PropsWithChildren> = props => {
-  const [data, setData] = React.useState<Omit<NavigationContext, 'selectDataset'>>({ currentDataset: null });
+  const [data, setData] = React.useState<Omit<NavigationContext, 'selectDataset'>>({ currentDataset: null, page: 'dataset' });
 
   const selectDataset = React.useCallback<NavigationContext['selectDataset']>(
     newData => setData(current => ({ ...current, ...newData })),

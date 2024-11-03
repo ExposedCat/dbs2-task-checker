@@ -11,16 +11,15 @@ import { useSessionToken } from '~/hooks/useSessionToken.js';
 import { useGetRequest } from '~/hooks/useGetRequest.js';
 import { Flex } from '~/components/elements/Flex.js';
 import { TopBar } from './TopBar.js';
+import { AdminPage } from '~/pages/Admin.js';
 
 export const Body: React.FC = () => {
   const query = useGetRequest<Session>('/session');
   const token = useSessionToken();
 
   React.useEffect(() => {
-    if (token && !query.data) {
-      query.refetch();
-    }
-  }, [token, query.data, query]);
+    query.refetch();
+  }, [token]);
 
   return (
     <Flex full direction="column">
@@ -36,7 +35,7 @@ export const Body: React.FC = () => {
 };
 
 const AuthorizedBody: React.FC = () => {
-  const { currentDataset: dataset, selectDataset: update } = useNavigation();
+  const { currentDataset: dataset, selectDataset: update, page } = useNavigation();
   const query = useGetRequest<Dataset[]>('/datasets');
 
   React.useEffect(() => {
@@ -53,7 +52,7 @@ const AuthorizedBody: React.FC = () => {
       {query.state === 'success' && (
         <ProvideDatasets value={query.data}>
           <TopBar />
-          <DatasetPage />
+          {page === 'admin' ? <AdminPage /> : <DatasetPage />}
         </ProvideDatasets>
       )}
     </>

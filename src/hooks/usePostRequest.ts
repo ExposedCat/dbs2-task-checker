@@ -1,21 +1,27 @@
 import React from 'react';
 
-import { httpRequest } from '~/services/http.js';
+import { httpRequest, HttpRequestArgs } from '~/services/http.js';
 import { useSessionToken } from './useSessionToken.js';
 import type { UseGetRequestResult } from './useGetRequest.js';
+import { getSessionToken } from '~/services/session.js';
 
 export type UsePostRequestResult<D> = {
-  request: (body: Record<string, any>) => void;
+  request: (body: Record<string, any> | FormData) => void;
 } & (
-  | {
+    | {
       state: 'idle';
       data: null;
       error: null;
     }
-  | UseGetRequestResult<D>
-);
+    | UseGetRequestResult<D>
+  );
 
-export function usePostRequest<D>(path: string, onSuccess?: (data: D) => void): UsePostRequestResult<D> {
+type UsePostRequestOptions<D> = {
+  contentType?: HttpRequestArgs['contentType'];
+  onSuccess?: (data: D) => void;
+}
+
+export function usePostRequest<D>(path: string, { contentType = 'json', onSuccess }: UsePostRequestOptions<D> = {}): UsePostRequestResult<D> {
   const token = useSessionToken();
 
   const [state, setState] = React.useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -28,6 +34,7 @@ export function usePostRequest<D>(path: string, onSuccess?: (data: D) => void): 
         method: 'POST',
         path,
         authorization: token,
+        contentType,
         body,
         // eslint-disable-next-line github/no-then
       }).then(response => {

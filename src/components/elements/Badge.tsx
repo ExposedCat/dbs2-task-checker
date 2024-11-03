@@ -4,9 +4,11 @@ import { css } from '@styled-system/css/css.mjs';
 import { Label } from './Label.js';
 import type { LabelProps } from './Label.js';
 
-export type BadgeProps = LabelProps;
+export type BadgeProps = LabelProps & {
+  preserveCase?: boolean;
+};
 
-export const Badge: React.FC<BadgeProps> = ({ className, ...rest }) => {
+export const Badge: React.FC<BadgeProps> = ({ className, preserveCase = false, ...rest }) => {
   const styles = css({
     backgroundColor: 'light.active',
     borderWidth: 'thin',
@@ -15,7 +17,7 @@ export const Badge: React.FC<BadgeProps> = ({ className, ...rest }) => {
     borderRadius: 'full',
     paddingX: 'xs',
     height: 'min-content',
-    textTransform: 'uppercase',
+    textTransform: preserveCase ? undefined : 'uppercase',
     fontSize: 'xs',
     whiteSpace: 'nowrap',
   });

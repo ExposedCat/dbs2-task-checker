@@ -23,7 +23,7 @@ const EmptyBody: React.FC = () => {
     [currentDataset, datasets],
   );
 
-  const startSessionQuery = usePostRequest('/test-session', () => refetchSession());
+  const startSessionQuery = usePostRequest('/test-session', { onSuccess: () => refetchSession() });
 
   const canStart = React.useMemo(
     () => session.availableTests.includes(currentDataset!),
@@ -54,15 +54,16 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
 
   const [solution, setSolution] = React.useState('');
 
-  const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', response => {
-    console.log(response);
-    if (response.result !== null) {
-      onResult({
-        correct: response.result,
-        total: testSession!.questionTotal,
-        wrong: response.wrong,
-      });
-      refetchSession();
+  const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
+    onSuccess: response => {
+      if (response.result !== null) {
+        onResult({
+          correct: response.result,
+          total: testSession!.questionTotal,
+          wrong: response.wrong,
+        });
+        refetchSession();
+      }
     }
   });
 

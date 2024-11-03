@@ -10,7 +10,7 @@ export type InputProps = React.HTMLProps<HTMLInputElement> &
     onValueChange?: (value: string) => void;
   };
 
-export const Input: React.FC<InputProps> = props => {
+export const Input: React.FC<InputProps> = React.forwardRef((props, ref) => {
   const { label, variant = 'outline', colorVariant, disabled, onValueChange, ...native } = props;
 
   const styles = css({
@@ -29,10 +29,11 @@ export const Input: React.FC<InputProps> = props => {
 
   return (
     <input
+      ref={ref}
       className={cx(styles, colorStyles({ variant, colorVariant }))}
       disabled={disabled}
       {...native}
       onChange={onChange}
     />
   );
-};
+});

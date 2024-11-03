@@ -6,22 +6,22 @@ import { useSessionToken } from './useSessionToken.js';
 export type UseGetRequestResult<D> = {
   refetch: () => void;
 } & (
-  | {
+    | {
       state: 'loading';
       data: null;
       error: null;
     }
-  | {
+    | {
       state: 'success';
       data: D;
       error: null;
     }
-  | {
+    | {
       state: 'error';
       data: null;
       error: unknown;
     }
-);
+  );
 
 export function useGetRequest<D>(path: string, executeImmediately = true): UseGetRequestResult<D> {
   const [state, setState] = React.useState<'loading' | 'success' | 'error'>('loading');
@@ -36,6 +36,7 @@ export function useGetRequest<D>(path: string, executeImmediately = true): UseGe
     void httpRequest<D>({
       method: 'GET',
       path,
+      contentType: 'json',
       authorization: token,
       // eslint-disable-next-line github/no-then
     }).then(response => {
