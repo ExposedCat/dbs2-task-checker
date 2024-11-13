@@ -8,4 +8,7 @@ export type Dataset = {
   }[];
 };
 
-export const { Provider: ProvideDatasets, useRequireValue: useDatasets } = buildProvider<Dataset[]>('ProvideDatasets');
+export const { Provider: ProvideDatasets, useRequireValue: useDatasets } = buildProvider<{
+  datasets: Dataset[];
+  refetch: () => void;
+}>('ProvideDatasets');

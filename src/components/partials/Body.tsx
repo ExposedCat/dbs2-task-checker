@@ -1,17 +1,17 @@
 import React from 'react';
 
-import { ProvideSession } from '~/providers/SessionProvider.js';
-import type { Session } from '~/providers/SessionProvider.js';
-import { useNavigation } from '~/providers/NavigationProvider.js';
+import { Flex } from '~/components/elements/Flex.js';
+import { useGetRequest } from '~/hooks/useGetRequest.js';
+import { useSessionToken } from '~/hooks/useSessionToken.js';
+import { AdminPage } from '~/pages/Admin.js';
+import { DatasetPage } from '~/pages/Dataset.js';
+import { LoginPage } from '~/pages/Login.js';
 import { ProvideDatasets } from '~/providers/DatasetsProvider.js';
 import type { Dataset } from '~/providers/DatasetsProvider.js';
-import { LoginPage } from '~/pages/Login.js';
-import { DatasetPage } from '~/pages/Dataset.js';
-import { useSessionToken } from '~/hooks/useSessionToken.js';
-import { useGetRequest } from '~/hooks/useGetRequest.js';
-import { Flex } from '~/components/elements/Flex.js';
+import { useNavigation } from '~/providers/NavigationProvider.js';
+import { ProvideSession } from '~/providers/SessionProvider.js';
+import type { Session } from '~/providers/SessionProvider.js';
 import { TopBar } from './TopBar.js';
-import { AdminPage } from '~/pages/Admin.js';
 
 export const Body: React.FC = () => {
   const query = useGetRequest<Session>('/session');
@@ -50,7 +50,7 @@ const AuthorizedBody: React.FC = () => {
       {query.state === 'loading' && 'Loading...'}
       {query.state === 'error' && 'Error'}
       {query.state === 'success' && (
-        <ProvideDatasets value={query.data}>
+        <ProvideDatasets value={{ datasets: query.data, refetch: query.refetch }}>
           <TopBar />
           {page === 'admin' ? <AdminPage /> : <DatasetPage />}
         </ProvideDatasets>

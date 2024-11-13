@@ -19,8 +19,10 @@ type ManageDatasetProps = {
 };
 
 const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
+  const [deleteDataset, setDeleteDataset] = React.useState(false);
   const [editKindsOpen, setEditKindsOpen] = React.useState(false);
 
+  const { refetch } = useDatasets();
   const { register, handleSubmit } = useForm<{ kinds: Record<string, string> }>();
 
   const queryUrl = React.useMemo(() => `/dataset-kinds?datasetId=${dataset.id}`, [dataset.id]);
@@ -30,10 +32,14 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
     onSuccess: () => setEditKindsOpen(false),
   });
 
-  // TODO:
-  const onRemove = React.useCallback(() => {
-    alert('Datasets removal is not implemented yet');
-  }, []);
+  const deleteQuery = usePostRequest('/delete-dataset', {
+    onSuccess: () => {
+      refetch();
+      setDeleteDataset(false);
+    },
+  });
+
+  const onRemove = React.useCallback(() => deleteQuery.request({ id: dataset.id }), []);
 
   const onSubmit = React.useCallback((data: { kinds: Record<string, string> }) => {
     saveQuery.request({
@@ -57,6 +63,10 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
         padding: 'sm',
       })}
     >
+      <Popup title={`Delete Dataset ${dataset.name}`} open={deleteDataset} onClose={() => setDeleteDataset(false)}>
+        <Label text={`Are you sure you want to delete ${dataset.name}? This operation is irreversible!`} />
+        <Button colorVariant="error" label={`Delete ${dataset.name}`} onClick={onRemove} />
+      </Popup>
       <Popup title="Update Dataset Kinds" open={editKindsOpen} onClose={() => setEditKindsOpen(false)}>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Flex full direction="column" gap="sm">
@@ -100,7 +110,7 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
           disabled={query.state !== 'success'}
           onClick={() => setEditKindsOpen(true)}
         />
-        <Button icon={FaTrashAlt} colorVariant="error" onClick={onRemove} />
+        <Button icon={FaTrashAlt} colorVariant="error" onClick={() => setDeleteDataset(true)} />
       </Flex>
     </Flex>
   );
@@ -114,7 +124,7 @@ type DatasetData = {
 };
 
 export function AdminPage() {
-  const datasets = useDatasets();
+  const { datasets } = useDatasets();
   const { register, handleSubmit, reset } = useForm<DatasetData>();
 
   const query = usePostRequest('/dataset', {

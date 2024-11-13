@@ -1,22 +1,22 @@
-import React from 'react';
 import { Flex } from '@styled-system/jsx/flex.mjs';
+import React from 'react';
 
-import { useSession } from '~/providers/SessionProvider.js';
-import { useNavigation } from '~/providers/NavigationProvider.js';
-import { useDatasets } from '~/providers/DatasetsProvider.js';
 import { usePostRequest } from '~/hooks/usePostRequest.js';
-import { TextArea } from '../elements/TextArea.js';
-import { Label } from '../elements/Label.js';
-import { Card } from '../elements/Card.js';
-import { Button } from '../elements/Button.js';
+import { useDatasets } from '~/providers/DatasetsProvider.js';
+import { useNavigation } from '~/providers/NavigationProvider.js';
+import { useSession } from '~/providers/SessionProvider.js';
 import { Badge } from '../elements/Badge.js';
-import { ErrorCard } from './ErrorCard.js';
+import { Button } from '../elements/Button.js';
+import { Card } from '../elements/Card.js';
+import { Label } from '../elements/Label.js';
+import { TextArea } from '../elements/TextArea.js';
 import { DownlloadDatasetButton } from './DownloadDatasetButton.js';
+import { ErrorCard } from './ErrorCard.js';
 
 const EmptyBody: React.FC = () => {
   const { session, refetch: refetchSession } = useSession();
   const { currentDataset } = useNavigation();
-  const datasets = useDatasets();
+  const { datasets } = useDatasets();
 
   const datasetName = React.useMemo(
     () => datasets.find(dataset => dataset.id === currentDataset)?.name,
@@ -64,7 +64,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
         });
         refetchSession();
       }
-    }
+    },
   });
 
   const handleExecute = React.useCallback(() => query.request({ query: solution }), [query, solution]);
