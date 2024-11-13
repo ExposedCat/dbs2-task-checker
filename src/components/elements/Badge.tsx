@@ -1,5 +1,5 @@
-import { cx } from '@styled-system/css/cx.mjs';
 import { css } from '@styled-system/css/css.mjs';
+import { cx } from '@styled-system/css/cx.mjs';
 
 import { Label } from './Label.js';
 import type { LabelProps } from './Label.js';
