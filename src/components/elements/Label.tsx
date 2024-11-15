@@ -10,8 +10,8 @@ const labelRecipe = cva({
     kind: {
       header: {
         fontSize: '2xl',
-        fontWeight: 'bold'
-      }
+        fontWeight: 'bold',
+      },
     },
     color: {
       error: { color: 'text.error' },

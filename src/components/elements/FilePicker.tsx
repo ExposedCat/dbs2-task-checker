@@ -1,9 +1,8 @@
-import React from 'react';
 import { css } from '@styled-system/css/css.mjs';
+import React from 'react';
 
-import { colorStyles } from '~/recipes/colors';
 import { Button } from './Button';
-import { InputProps } from './Input';
+import type { InputProps } from './Input';
 
 export type FilePickerProps = Omit<InputProps, 'type'>;
 
@@ -23,7 +22,7 @@ export const FilePicker: React.FC<FilePickerProps> = React.forwardRef((props, re
       setFile(event.target.files?.[0]?.name ?? null);
       onValueChange?.((event.target as HTMLInputElement).value);
     },
-    [native, onValueChange],
+    [native.onChange, onValueChange],
   );
 
   const forwardClick = React.useCallback(() => {
@@ -32,7 +31,12 @@ export const FilePicker: React.FC<FilePickerProps> = React.forwardRef((props, re
 
   return (
     <>
-      <Button type="button" {...{ variant, colorVariant, disabled }} label={file ?? "Select file..."} onClick={forwardClick} />
+      <Button
+        type="button"
+        {...{ variant, colorVariant, disabled }}
+        label={file ?? 'Select file...'}
+        onClick={forwardClick}
+      />
       <input
         type="file"
         id="file-picker"

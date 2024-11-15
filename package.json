@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite --mode private",
     "build": "tsc -b && vite build --mode production",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "bunx biome lint src/ --write",
+    "format": "bunx biome format src/ --write",
     "preview": "vite preview",
     "prepare": "panda codegen --clean"
   },
@@ -30,13 +30,5 @@
     "typescript": "^5.5.3",
     "vite": "^5.4.1"
   },
-  "keywords": [
-    "boilerplate",
-    "typescript",
-    "ts",
-    "vite",
-    "react",
-    "template",
-    "configuration"
-  ]
+  "keywords": ["boilerplate", "typescript", "ts", "vite", "react", "template", "configuration"]
 }

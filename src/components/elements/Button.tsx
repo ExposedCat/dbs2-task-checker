@@ -1,10 +1,10 @@
-import React from 'react';
+import type React from 'react';
 import { cx } from '@styled-system/css/cx.mjs';
 import { css } from '@styled-system/css/css.mjs';
 
 import { hoverStyles, type HoverColorStylesProps } from '~/recipes/hover.js';
 import { colorStyles } from '~/recipes/colors';
-import { IconType } from 'react-icons';
+import type { IconType } from 'react-icons';
 
 export type ButtonProps = React.HTMLAttributes<HTMLButtonElement> &
   HoverColorStylesProps & {
@@ -28,7 +28,7 @@ export const Button: React.FC<ButtonProps> = props => {
     borderRadius: 'common',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
-    aspectRatio: !label && icon ? '1 / 1' : undefined
+    aspectRatio: !label && icon ? '1 / 1' : undefined,
   });
 
   return (

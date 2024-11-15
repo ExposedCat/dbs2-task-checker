@@ -24,7 +24,7 @@ export const Input: React.FC<InputProps> = React.forwardRef((props, ref) => {
       native.onChange?.(event);
       onValueChange?.((event.target as HTMLInputElement).value);
     },
-    [native, onValueChange],
+    [native.onChange, onValueChange],
   );
 
   return (

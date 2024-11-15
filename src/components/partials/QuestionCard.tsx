@@ -73,7 +73,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     if (query.state === 'success') {
       refetchSession();
     }
-  }, [query.data, query.state, refetchSession]);
+  }, [query.state, refetchSession]);
 
   if (!testSession) return null;
 

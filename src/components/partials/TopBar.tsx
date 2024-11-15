@@ -17,7 +17,7 @@ export const TopBar: React.FC = () => {
   const onLogout = React.useCallback(() => {
     setSessionToken(null);
     refetch();
-  }, []);
+  }, [refetch]);
 
   return (
     <Flex justify="space-between" align="center" width="full" padding="sm" borderBottom="base">

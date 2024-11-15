@@ -5,27 +5,27 @@ export type HttpRequestArgs = {
   contentType: 'json' | 'form';
   authorization: string | null;
 } & (
-    | {
+  | {
       method: 'GET';
       body?: null | undefined;
     }
-    | {
+  | {
       method: 'POST';
       body: Record<string, any>;
     }
-  );
+);
 
 export type HttpResponse<D> =
   | {
-    ok: true;
-    error: null;
-    data: D;
-  }
+      ok: true;
+      error: null;
+      data: D;
+    }
   | {
-    ok: false;
-    error: string;
-    data: null;
-  };
+      ok: false;
+      error: string;
+      data: null;
+    };
 
 function makeFormData(data: Record<string, any> | null | undefined) {
   const formData = new FormData();

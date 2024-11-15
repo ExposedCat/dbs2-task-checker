@@ -12,13 +12,16 @@ export type PopupProps = {
 };
 
 export const Popup: React.FC<React.PropsWithChildren<PopupProps>> = ({ open, title, children, onClose }) => {
-  if (!open) return null;
+  const onBackgroundClick = React.useCallback<React.MouseEventHandler>(
+    event => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose],
+  );
 
-  const onBackgroundClick = React.useCallback<React.MouseEventHandler>(event => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  }, []);
+  if (!open) return null;
 
   return (
     <>

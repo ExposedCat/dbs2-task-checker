@@ -11,7 +11,10 @@ export type NavigationContext = {
 const { Provider, useRequireValue: useNavigation } = buildProvider<NavigationContext>('ProvideNavigation');
 
 export const ProvideNavigation: React.FC<React.PropsWithChildren> = props => {
-  const [data, setData] = React.useState<Omit<NavigationContext, 'selectDataset'>>({ currentDataset: null, page: 'dataset' });
+  const [data, setData] = React.useState<Omit<NavigationContext, 'selectDataset'>>({
+    currentDataset: null,
+    page: 'dataset',
+  });
 
   const selectDataset = React.useCallback<NavigationContext['selectDataset']>(
     newData => setData(current => ({ ...current, ...newData })),

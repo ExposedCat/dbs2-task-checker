@@ -17,6 +17,7 @@ export const Body: React.FC = () => {
   const query = useGetRequest<Session>('/session');
   const token = useSessionToken();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   React.useEffect(() => {
     query.refetch();
   }, [token]);

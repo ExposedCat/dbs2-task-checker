@@ -39,18 +39,21 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
     },
   });
 
-  const onRemove = React.useCallback(() => deleteQuery.request({ id: dataset.id }), []);
+  const onRemove = React.useCallback(() => deleteQuery.request({ id: dataset.id }), [dataset.id, deleteQuery.request]);
 
-  const onSubmit = React.useCallback((data: { kinds: Record<string, string> }) => {
-    saveQuery.request({
-      id: dataset.id,
-      kinds: Object.fromEntries(
-        Object.entries(data.kinds)
-          .filter(([_, value]) => value)
-          .map(([kind, value]) => [kind, Number(value)]),
-      ),
-    });
-  }, []);
+  const onSubmit = React.useCallback(
+    (data: { kinds: Record<string, string> }) => {
+      saveQuery.request({
+        id: dataset.id,
+        kinds: Object.fromEntries(
+          Object.entries(data.kinds)
+            .filter(([_, value]) => value)
+            .map(([kind, value]) => [kind, Number(value)]),
+        ),
+      });
+    },
+    [dataset.id, saveQuery.request],
+  );
 
   return (
     <Flex
@@ -132,13 +135,16 @@ export function AdminPage() {
     onSuccess: () => reset(),
   });
 
-  const onSubmit = React.useCallback((data: DatasetData) => {
-    const { files, ...rest } = data;
-    query.request({
-      ...rest,
-      file: files[0],
-    });
-  }, []);
+  const onSubmit = React.useCallback(
+    (data: DatasetData) => {
+      const { files, ...rest } = data;
+      query.request({
+        ...rest,
+        file: files[0],
+      });
+    },
+    [query.request],
+  );
 
   return (
     <Page>
