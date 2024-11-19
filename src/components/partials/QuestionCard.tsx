@@ -52,7 +52,9 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     refetch: refetchSession,
   } = useSession();
 
-  const [solution, setSolution] = React.useState('');
+  const [solutions, setSolutions] = React.useState<string[]>([]);
+
+  const handleSolution = React.useCallback((solution: string) => setSolutions(solution.split('\n\n')), []);
 
   const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
     onSuccess: response => {
@@ -67,7 +69,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     },
   });
 
-  const handleExecute = React.useCallback(() => query.request({ query: solution }), [query, solution]);
+  const handleExecute = React.useCallback(() => query.request({ queries: solutions }), [query, solutions]);
 
   React.useEffect(() => {
     if (query.state === 'success') {
@@ -85,7 +87,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           <Badge text={testSession.kind} />
           <Label text={testSession.question} />
         </Flex>
-        <TextArea placeholder="Write a query..." onChange={setSolution} />
+        <TextArea placeholder="Write a query..." onChange={handleSolution} />
         <Flex width="full" justify="space-between" align="center">
           <DownlloadDatasetButton />
           <Button label="Execute" disabled={query.state === 'loading'} onClick={handleExecute} />
