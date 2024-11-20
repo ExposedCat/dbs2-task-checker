@@ -49,6 +49,11 @@ export function usePostRequest<D>(
           } else {
             setError(response.error);
           }
+        })
+        .catch(error => {
+          console.error(`POST Request failed: `, error);
+          setState('error');
+          setError(String(error));
         }),
     [onSuccess, path, token, contentType],
   );

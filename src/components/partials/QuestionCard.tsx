@@ -90,7 +90,17 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
         <TextArea placeholder="Write a query..." onChange={handleSolution} />
         <Flex width="full" justify="space-between" align="center">
           <DownlloadDatasetButton />
-          <Button label="Execute" disabled={query.state === 'loading'} onClick={handleExecute} />
+          <Button
+            label="Skip"
+            variant="outline"
+            disabled={query.state === 'loading' || solutions.length !== 0}
+            onClick={handleExecute}
+          />
+          <Button
+            label="Execute"
+            disabled={query.state === 'loading' || solutions.length === 0}
+            onClick={handleExecute}
+          />
         </Flex>
       </Card>
       {query.state === 'error' && <ErrorCard error={query.error} />}
