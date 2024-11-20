@@ -26,9 +26,11 @@ export function usePostRequest<D>(
 ): UsePostRequestResult<D> {
   const token = useSessionToken();
 
-  const [state, setState] = React.useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [data, setData] = React.useState<D | null>(null);
-  const [error, setError] = React.useState<unknown | null>(null);
+  const [state, setState] = React.useState({
+    state: 'idle' as 'idle' | 'loading' | 'success' | 'error',
+    data: null as null | D,
+    error: null as null | unknown,
+  });
 
   const request = React.useCallback(
     (body: Record<string, any>) =>
@@ -42,21 +44,23 @@ export function usePostRequest<D>(
           // eslint-disable-next-line github/no-then
         })
         .then(response => {
-          setState(response.ok ? 'success' : 'error');
+          setState({
+            state: response.ok ? 'success' : 'error',
+            data: response.ok ? response.data : null,
+            error: response.ok ? null : response.error,
+          });
           if (response.ok) {
-            setData(response.data);
             onSuccess?.(response.data);
           } else {
-            setError(response.error);
+            throw response.error;
           }
         })
         .catch(error => {
           console.error(`POST Request failed: `, error);
-          setState('error');
-          setError(String(error));
+          setState({ state: 'error', data: null, error });
         }),
     [onSuccess, path, token, contentType],
   );
 
-  return { state, data, error, request } as UsePostRequestResult<D>;
+  return { ...state, request } as UsePostRequestResult<D>;
 }
