@@ -1,6 +1,6 @@
-import React from 'react';
-import { cx } from '@styled-system/css/cx.mjs';
 import { css } from '@styled-system/css/css.mjs';
+import { cx } from '@styled-system/css/cx.mjs';
+import React from 'react';
 
 export type TextAreaProps = Omit<React.HTMLProps<HTMLTextAreaElement>, 'onChange'> & {
   onChange: (value: string) => void;
@@ -25,7 +25,7 @@ export const TextArea: React.FC<React.PropsWithChildren<TextAreaProps>> = ({
   );
 
   return (
-    <textarea spellCheck={false} rows={1} {...rest} className={cx(style, className)} onChange={handleChange}>
+    <textarea spellCheck={false} rows={3} {...rest} className={cx(style, className)} onChange={handleChange}>
       {children}
     </textarea>
   );

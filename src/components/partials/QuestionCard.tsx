@@ -54,7 +54,10 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
 
   const [solutions, setSolutions] = React.useState<string[]>([]);
 
-  const handleSolution = React.useCallback((solution: string) => setSolutions(solution.split('\n\n')), []);
+  const handleSolution = React.useCallback(
+    (solution: string) => setSolutions(solution.split('\n\n').filter(Boolean)),
+    [],
+  );
 
   const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
     onSuccess: response => {
@@ -87,7 +90,10 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           <Badge text={testSession.kind} />
           <Label text={testSession.question} />
         </Flex>
-        <TextArea placeholder="Write a query..." onChange={handleSolution} />
+        <TextArea
+          placeholder="Write a query here. Multiple commands are separated by an empty line between them"
+          onChange={handleSolution}
+        />
         <Flex width="full" justify="space-between" align="center">
           <DownlloadDatasetButton />
           <Button
