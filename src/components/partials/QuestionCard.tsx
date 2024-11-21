@@ -64,8 +64,8 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           total: testSession!.questionTotal,
           wrong: response.wrong,
         });
-        refetchSession();
       }
+      refetchSession();
     },
   });
 
