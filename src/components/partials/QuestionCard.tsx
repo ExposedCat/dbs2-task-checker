@@ -64,6 +64,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
 
   const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
     onSuccess: response => {
+      console.log(solutionRef);
       if (solutionRef.current) {
         solutionRef.current.value = '';
       }
