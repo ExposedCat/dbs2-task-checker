@@ -5,14 +5,10 @@ const globalCss = defineGlobalStyles({
     boxSizing: 'border-box',
     fontFamily: 'body',
   },
-  'html, body': {
+  'html, body, #root': {
     margin: 0,
     padding: 0,
-  },
-  '#root': {
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: '100vh',
+    height: '100%',
   },
 });
 
