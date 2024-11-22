@@ -1,6 +1,7 @@
 import { Flex } from '@styled-system/jsx/flex.mjs';
 import React from 'react';
 
+import { setServers } from 'dns';
 import { usePostRequest } from '~/hooks/usePostRequest.js';
 import { useDatasets } from '~/providers/DatasetsProvider.js';
 import { useNavigation } from '~/providers/NavigationProvider.js';
@@ -52,6 +53,8 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     refetch: refetchSession,
   } = useSession();
 
+  const solutionRef = React.useRef<HTMLTextAreaElement | null>(null);
+
   const [solutions, setSolutions] = React.useState<string[]>([]);
 
   const handleSolution = React.useCallback(
@@ -61,6 +64,9 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
 
   const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
     onSuccess: response => {
+      if (solutionRef.current) {
+        solutionRef.current.value = '';
+      }
       if (response.result !== null) {
         onResult({
           correct: response.result,
@@ -68,6 +74,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           wrong: response.wrong,
         });
       }
+      setSolutions([]);
       refetchSession();
     },
   });
@@ -91,6 +98,7 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           <Label text={testSession.question} />
         </Flex>
         <TextArea
+          ref={solutionRef}
           placeholder="Write a query here. Multiple commands are separated by an empty line between them"
           onChange={handleSolution}
         />
