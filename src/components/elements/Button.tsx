@@ -1,10 +1,10 @@
-import type React from 'react';
-import { cx } from '@styled-system/css/cx.mjs';
 import { css } from '@styled-system/css/css.mjs';
+import { cx } from '@styled-system/css/cx.mjs';
+import type React from 'react';
 
-import { hoverStyles, type HoverColorStylesProps } from '~/recipes/hover.js';
-import { colorStyles } from '~/recipes/colors';
 import type { IconType } from 'react-icons';
+import { colorStyles } from '~/recipes/colors';
+import { type HoverColorStylesProps, hoverStyles } from '~/recipes/hover.js';
 
 export type ButtonProps = React.HTMLAttributes<HTMLButtonElement> &
   HoverColorStylesProps & {
@@ -16,7 +16,7 @@ export type ButtonProps = React.HTMLAttributes<HTMLButtonElement> &
   };
 
 export const Button: React.FC<ButtonProps> = props => {
-  const { label, icon, disabled, variant, colorVariant, onClick, reverse = false, ...rest } = props;
+  const { label, icon, disabled, variant, colorVariant, onClick, reverse = false, className, ...rest } = props;
 
   const styles = css({
     display: 'flex',
@@ -34,7 +34,7 @@ export const Button: React.FC<ButtonProps> = props => {
   return (
     <button
       className={cx(
-        //
+        className,
         styles,
         colorStyles({ variant, colorVariant }),
         !disabled && hoverStyles({ variant, colorVariant }),

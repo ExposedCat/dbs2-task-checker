@@ -2,6 +2,7 @@ import { Flex } from '@styled-system/jsx/flex.mjs';
 import React from 'react';
 
 import { setServers } from 'dns';
+import { css } from '@styled-system/css/css.mjs';
 import { usePostRequest } from '~/hooks/usePostRequest.js';
 import { useDatasets } from '~/providers/DatasetsProvider.js';
 import { useNavigation } from '~/providers/NavigationProvider.js';
@@ -10,6 +11,7 @@ import { Badge } from '../elements/Badge.js';
 import { Button } from '../elements/Button.js';
 import { Card } from '../elements/Card.js';
 import { Label } from '../elements/Label.js';
+import { Popup } from '../elements/Popup.js';
 import { TextArea } from '../elements/TextArea.js';
 import { DownlloadDatasetButton } from './DownloadDatasetButton.js';
 import { ErrorCard } from './ErrorCard.js';
@@ -56,22 +58,33 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
   const solutionRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const [solutions, setSolutions] = React.useState<string[]>([]);
+  const [quitRequested, setQuitRequested] = React.useState(false);
 
   const handleSolution = React.useCallback(
     (solution: string) => setSolutions(solution.split('\n\n').filter(Boolean)),
     [],
   );
 
+  const quitQuery = usePostRequest<{ wrong: string[]; result: number | null }>('/quit', {
+    onSuccess: response => {
+      onResult({
+        correct: response.result ?? 0,
+        total: testSession?.questionTotal ?? 0,
+        wrong: response.wrong,
+      });
+      refetchSession();
+    },
+  });
+
   const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
     onSuccess: response => {
-      console.log(solutionRef);
       if (solutionRef.current) {
         solutionRef.current.value = '';
       }
       if (response.result !== null) {
         onResult({
           correct: response.result,
-          total: testSession!.questionTotal,
+          total: testSession?.questionTotal ?? 0,
           wrong: response.wrong,
         });
       }
@@ -85,6 +98,8 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     [query, solutions],
   );
 
+  const handleQuit = React.useCallback(() => quitQuery.request({}), [query, solutions]);
+
   React.useEffect(() => {
     if (query.state === 'success') {
       refetchSession();
@@ -95,6 +110,15 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
 
   return (
     <>
+      <Popup title="Quit test" open={quitRequested} onClose={() => setQuitRequested(false)}>
+        <Label
+          text={`Are you sure you want to finish test right now? Your incomplete set of answers will be submitted.`}
+        />
+        <Flex width="full" gap="sm" justify="stretch">
+          <Button className={css({ width: 'full' })} label="Continue test" onClick={() => setQuitRequested(false)} />
+          <Button className={css({ width: 'full' })} colorVariant="error" label="Quit" onClick={handleQuit} />
+        </Flex>
+      </Popup>
       <Card gap="sm" maxWidth="container.full">
         <Flex align="center" justify="space-between" gap="sm">
           <Badge text={`${testSession.questionNumber} / ${testSession.questionTotal}`} />
@@ -106,11 +130,21 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           placeholder="Write a query here. Multiple commands are separated by an empty line between them"
           onChange={handleSolution}
         />
-        <Flex width="full" justify="space-between" align="center">
-          <DownlloadDatasetButton />
+        <Flex width="full" justify="space-between" align="center" gap="sm">
+          <Flex justify="space-between" align="center" gap="sm">
+            <DownlloadDatasetButton />
+            <Button
+              label="Quit"
+              variant="outline"
+              colorVariant="error"
+              disabled={query.state === 'loading'}
+              onClick={() => setQuitRequested(true)}
+            />
+          </Flex>
           <Button
             label="Skip"
             variant="outline"
+            colorVariant="warning"
             disabled={query.state === 'loading'}
             onClick={() => handleExecute(true)}
           />
