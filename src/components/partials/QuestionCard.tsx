@@ -80,7 +80,10 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     },
   });
 
-  const handleExecute = React.useCallback(() => query.request({ queries: solutions }), [query, solutions]);
+  const handleExecute = React.useCallback(
+    (skip = false) => query.request({ queries: skip ? [] : solutions }),
+    [query, solutions],
+  );
 
   React.useEffect(() => {
     if (query.state === 'success') {
@@ -108,13 +111,13 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           <Button
             label="Skip"
             variant="outline"
-            disabled={query.state === 'loading' || solutions.length !== 0}
-            onClick={handleExecute}
+            disabled={query.state === 'loading'}
+            onClick={() => handleExecute(true)}
           />
           <Button
             label="Execute"
             disabled={query.state === 'loading' || solutions.length === 0}
-            onClick={handleExecute}
+            onClick={() => handleExecute(false)}
           />
         </Flex>
       </Card>
