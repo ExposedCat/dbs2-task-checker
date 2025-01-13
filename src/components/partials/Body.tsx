@@ -9,7 +9,7 @@ import { LoginPage } from '~/pages/Login.js';
 import { ProvideDatasets } from '~/providers/DatasetsProvider.js';
 import type { Dataset } from '~/providers/DatasetsProvider.js';
 import { useNavigation } from '~/providers/NavigationProvider.js';
-import { ProvideSession } from '~/providers/SessionProvider.js';
+import { ProvideSession, useSession } from '~/providers/SessionProvider.js';
 import type { Session } from '~/providers/SessionProvider.js';
 import { TopBar } from './TopBar.js';
 
@@ -35,12 +35,15 @@ export const Body: React.FC = () => {
 };
 
 const AuthorizedBody: React.FC = () => {
+  const {
+    session: { testSession },
+  } = useSession();
   const { currentDataset: dataset, selectDataset: update, page } = useNavigation();
   const query = useGetRequest<Dataset[]>('/datasets');
 
   React.useEffect(() => {
     if (!dataset && query.data) {
-      update({ currentDataset: query.data.at(0)?.id ?? null });
+      update({ currentDataset: testSession?.datasetId ?? query.data.at(0)?.id ?? null });
     }
   }, [dataset, query.data, update]);
 

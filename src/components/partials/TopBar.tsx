@@ -28,6 +28,7 @@ export const TopBar: React.FC = () => {
             key={index}
             label={item.name}
             variant={page === 'dataset' && item.id === dataset ? 'filled' : 'outline'}
+            disabled={dataset !== item.id && session.testSession !== null}
             onClick={() => update({ currentDataset: item.id, page: 'dataset' })}
           />
         ))}
