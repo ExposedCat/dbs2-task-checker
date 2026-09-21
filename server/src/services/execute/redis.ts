@@ -1,4 +1,4 @@
-import { createClient } from 'redis';
+import { ErrorReply, createClient } from 'redis';
 
 import { parseCommand } from '../escape.js';
 import type { BaseExecuteArgs, ExecuteResult } from './index.js';
@@ -109,15 +109,20 @@ export async function executeRedis({
   }
 
   let batchResponse = '';
-  for (const singleQuery of normalizedQueries) {
+  for (const [index, singleQuery] of normalizedQueries.entries()) {
     try {
-      // console.log('Executing:', parseCommand(singleQuery));
       const response = await client.sendCommand(parseCommand(singleQuery));
-      // console.log('Response:', response);
       const textResponse = response !== undefined ? JSON.stringify(response, null, 1) : '<empty>';
       batchResponse += `${textResponse}\n`;
     } catch (error) {
       await client.quit();
+      if (error instanceof ErrorReply) {
+        // Redis itself rejected the student's command (unknown command, wrong number of
+        // arguments, WRONGTYPE, ...). That is a normal outcome of an invalid query, so
+        // relay Redis' own message and let the student fix the query.
+        const position = normalizedQueries.length > 1 ? ` (command ${index + 1} of ${normalizedQueries.length})` : '';
+        return { ok: false, error: `Redis error${position}: ${error.message}`, data: null };
+      }
       const textError =
         error instanceof Error
           ? `Unexpected Error (while executing command): ${error}`
