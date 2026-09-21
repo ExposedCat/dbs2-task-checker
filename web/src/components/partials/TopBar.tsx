@@ -36,10 +36,16 @@ export const TopBar: React.FC = () => {
           <>
             <Flex width="1px" background="decoration.gray" />
             <Button
-              label="Admin Panel"
-              variant={page === 'admin' ? 'filled' : 'outline'}
+              label="Datasets"
+              variant={page === 'datasets' ? 'filled' : 'outline'}
               colorVariant="warning"
-              onClick={() => update({ page: 'admin' })}
+              onClick={() => update({ page: 'datasets' })}
+            />
+            <Button
+              label="Users"
+              variant={page === 'users' ? 'filled' : 'outline'}
+              colorVariant="warning"
+              onClick={() => update({ page: 'users' })}
             />
           </>
         )}

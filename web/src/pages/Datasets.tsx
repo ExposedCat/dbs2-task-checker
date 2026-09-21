@@ -160,7 +160,7 @@ type DatasetData = {
   files: FileList;
 };
 
-export function AdminPage() {
+export function DatasetsPage() {
   const [changedAt, setChangedAt] = React.useState(0);
   const { datasets, refetch } = useDatasets();
   const { register, handleSubmit, reset } = useForm<DatasetData>({

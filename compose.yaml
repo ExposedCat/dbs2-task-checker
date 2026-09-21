@@ -41,9 +41,15 @@ services:
       REDIS_SANDBOX_HOST: "${REDIS_SANDBOX_HOST:-host.containers.internal}"
       # Only used by scripts/create-user.ts
       MONGO_SANDBOX_ROOT_URL: "${MONGO_SANDBOX_ROOT_URL:-}"
+      # Password reset of student Linux accounts over SSH (server/scripts/host/README.md).
+      # Leave the target empty to disable the feature.
+      PASSWORD_RESET_SSH_TARGET: "${PASSWORD_RESET_SSH_TARGET:-}"
+      PASSWORD_RESET_SSH_KEY: /run/secrets/portal-ssh-key
     volumes:
       # `z` relabels for SELinux hosts (Fedora/RHEL); ignored elsewhere
       - "${DATASETS_DIR:-./server/datasets}:/app/datasets:ro,z"
+      # Private key for the password reset; /dev/null when the feature is not used
+      - "${PASSWORD_RESET_SSH_KEY_FILE:-/dev/null}:/run/secrets/portal-ssh-key:ro"
     extra_hosts:
       # podman adds this name by itself; Docker on Linux needs it spelled out
       - "host.containers.internal:host-gateway"

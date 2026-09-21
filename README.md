@@ -131,6 +131,8 @@ Question banks are uploaded by an admin through the portal UI.
 | `MONGO_SANDBOX_HOST` / `_PORT`| `host.containers.internal` / `42222`       | Sandbox MongoDB                                              |
 | `REDIS_SANDBOX_HOST`          | `host.containers.internal`                 | Host of the per-student Redis instances                      |
 | `DATASETS_DIR`                | `./server/datasets`                        | Runtime datasets, mounted read-only into the server          |
+| `PASSWORD_RESET_SSH_TARGET`   | – (disabled)                               | `user@host` for resetting student Linux passwords over SSH; see `server/scripts/host/README.md` |
+| `PASSWORD_RESET_SSH_KEY_FILE` | `/dev/null`                                | Private key of the portal for the password reset             |
 | `SITE_ADDRESS`                | `:80`                                      | Caddy site address; a domain enables automatic HTTPS         |
 | `WEB_HTTP_PORT` / `_HTTPS_PORT` | `80` / `443`                             | Host ports published by `web`                                |
 | `MONGO_SANDBOX_ROOT_USERNAME` / `_PASSWORD` | `root` / –                   | Bundled sandbox MongoDB root (overlay only)                  |
@@ -141,16 +143,30 @@ Question banks are uploaded by an admin through the portal UI.
 
 ## Local development
 
-Run the databases however you like (e.g. `podman-compose -f compose.yaml -f compose.local-db.yaml up -d mongo mongo-sandbox redis-sandbox`
-and publish their ports), then:
+`compose.dev.yaml` starts the bundled databases and the API from the working tree with hot
+reload (`bun --watch`); the frontend runs on the host with Vite. Nothing but podman/node is
+needed on the machine, and everything listens on 127.0.0.1 only.
 
 ```sh
-# API — http://127.0.0.1:8080
-cd server && cp .env.example .env && bun install && bun run dev
-
-# Frontend — http://127.0.0.1:3000
-cd web && cp .env.example .env && npm install && npm run dev
+podman-compose -f compose.dev.yaml up -d --build                   # DBs + API on http://127.0.0.1:8080
+podman-compose -f compose.dev.yaml --profile seed run --rm seed    # sample accounts (once)
+cd web && cp .env.example .env && npm install && npm run dev       # http://127.0.0.1:3000
 ```
+
+Sample accounts created by `seed` (portal + sandbox MongoDB + Redis, all with the same password):
+
+| Login     | Password  | Role    | Redis port |
+| --------- | --------- | ------- | ---------- |
+| `admin`   | `admin`   | admin   | 6380       |
+| `student` | `student` | student | 6381       |
+
+The question banks are empty at first: upload them as `admin` on the Datasets page, or copy
+them from an existing deployment. The runtime datasets go to `server/datasets/` (see
+`server/datasets/README.md`). Ports: portal MongoDB 27018, sandbox MongoDB 42222
+(`root`/`dev`), Redis 6380/6381. `podman-compose -f compose.dev.yaml down -v` wipes everything.
+
+Without containers for the API: `cd server && cp .env.example .env && bun install && bun run dev`
+against databases of your own.
 
 See `web/README.md` and `server/README.md` for the per-package tech stack.
 

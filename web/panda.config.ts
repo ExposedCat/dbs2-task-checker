@@ -10,6 +10,13 @@ const globalCss = defineGlobalStyles({
     padding: 0,
     height: '100%',
   },
+  // Explicit light theme: an unset (transparent) body background follows the browser/OS
+  // dark theme while the components assume light colours.
+  body: {
+    backgroundColor: 'white',
+    color: 'text.normal',
+    colorScheme: 'light',
+  },
 });
 
 export default defineConfig({

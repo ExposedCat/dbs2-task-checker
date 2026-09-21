@@ -10,8 +10,10 @@ import { DatasetsRoute } from './routes/datasets.get.js';
 import { DeleteDatasetRoute } from './routes/delete-dataset.post.js';
 import { LoginRoute } from './routes/login.post.js';
 import { QueryRoute } from './routes/query.post.js';
+import { ResetPasswordRoute } from './routes/reset-password.post.js';
 import { SessionRoute } from './routes/session.get.js';
 import { QuitTestSessionRoute, TestSessionRoute } from './routes/test-session.post.js';
+import { UsersRoute } from './routes/users.get.js';
 
 const app = new Elysia()
   .use(RequireBase)
@@ -27,6 +29,8 @@ const app = new Elysia()
   .use(QueryRoute)
   .use(DatasetKindsRoute)
   .use(SetDatasetKindsRoute)
+  .use(UsersRoute)
+  .use(ResetPasswordRoute)
   .use(RequireErrorFallback)
   .use(DeleteDatasetRoute)
   .listen(Number(process.env.PORT ?? 8080));

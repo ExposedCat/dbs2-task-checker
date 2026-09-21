@@ -75,6 +75,49 @@ export async function getUser(args: GetUserArgs) {
   }
 }
 
+/** Everything an admin may see about a user: infrastructure details and progress, never the password */
+export type UserInfo = {
+  user: string;
+  admin: boolean;
+  /**
+   * `port` is null for legacy records that were never assigned a Redis instance. Everything
+   * else a student owns (sandbox MongoDB database, PostgreSQL database, Cassandra keyspace) is
+   * simply named after the login, so it is not repeated here.
+   */
+  redis: { port: number | null };
+  submissions: { datasetId: DatasetName; grade: number }[];
+  testSession: { datasetId: DatasetName; answered: number; total: number } | null;
+};
+
+export type ListUsersArgs = {
+  database: Database;
+};
+
+export async function listUsers({ database }: ListUsersArgs): Promise<ServiceResponse<UserInfo[]>> {
+  // The password is excluded at the query level so it can never end up in the response
+  const users = await database.users
+    .find<Omit<User, 'password'>>({}, { projection: { password: 0 }, sort: { user: 1 } })
+    .toArray();
+
+  return {
+    ok: true,
+    error: null,
+    data: users.map(user => ({
+      user: user.user,
+      admin: user.admin ?? false,
+      redis: { port: user.port ?? null },
+      submissions: (user.submissions ?? []).map(({ datasetId, grade }) => ({ datasetId, grade })),
+      testSession: user.testSession
+        ? {
+            datasetId: user.testSession.datasetId,
+            answered: user.testSession.tasks.filter(task => task.userSolution !== null).length,
+            total: user.testSession.tasks.length,
+          }
+        : null,
+    })),
+  };
+}
+
 export type QuitTestSessionArgs = {
   database: Database;
   user: WithId<User>;

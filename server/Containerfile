@@ -4,9 +4,10 @@ WORKDIR /app
 
 # `mongosh` is required at runtime: student queries are executed against the
 # sandbox MongoDB through the mongosh CLI (see src/services/execute/mongodb.ts).
+# `openssh-client` is used to reset student passwords on the host (scripts/host/README.md).
 RUN export DEBIAN_FRONTEND=noninteractive \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg openssh-client \
   && curl -fsSL https://pgp.mongodb.com/server-8.0.asc \
     | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg \
   && echo "deb [signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" \

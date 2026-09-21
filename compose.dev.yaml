@@ -1,0 +1,110 @@
+# Local development stack: bundled databases + the API running from source with hot reload.
+# The frontend runs on the host with Vite (`cd web && npm run dev`, see README "Local development").
+#
+#   podman-compose -f compose.dev.yaml up -d --build
+#   podman-compose -f compose.dev.yaml run --rm seed        # admin/admin + student/student
+#   podman-compose -f compose.dev.yaml down -v              # stop and wipe the data
+#
+# Everything is published on 127.0.0.1 only. Ports are chosen not to collide with a
+# default local MongoDB (27017): portal MongoDB 27018, sandbox MongoDB 42222, Redis 6380/6381.
+name: dbs2-task-checker-dev
+
+x-server-env: &server-env
+  PORT: 8080
+  JWT_SECRET: dev-secret-not-for-production
+  DB_CONNECTION_URL: mongodb://mongo:27017
+  MONGO_SANDBOX_HOST: mongo-sandbox
+  MONGO_SANDBOX_PORT: "27017"
+  MONGO_SANDBOX_ROOT_URL: mongodb://root:dev@mongo-sandbox:27017
+  REDIS_SANDBOX_HOST: redis-sandbox
+
+services:
+  # Bun / Elysia API from the working tree; `bun --watch` restarts it on every change.
+  server:
+    build: ./server
+    image: dbs2-task-checker-server
+    command: ["bun", "run", "--watch", "src/index.ts"]
+    environment:
+      <<: *server-env
+      NODE_ENV: development
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./server/src:/app/src:ro,z
+      - ./server/scripts:/app/scripts:ro,z
+      - ./server/datasets:/app/datasets:ro,z
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-sandbox:
+        condition: service_healthy
+      redis-sandbox:
+        condition: service_started
+
+  # One-shot: creates the sample accounts (portal user + sandbox MongoDB user).
+  # Their Redis instances come from redis-sandbox/instances.dev.conf (same ports/passwords).
+  seed:
+    image: dbs2-task-checker-server
+    environment: *server-env
+    volumes:
+      - ./server/src:/app/src:ro,z
+      - ./server/scripts:/app/scripts:ro,z
+    command:
+      - sh
+      - -c
+      - |
+        bun run scripts/create-user.ts --user admin --password admin --port 6380 --admin &&
+        bun run scripts/create-user.ts --user student --password student --port 6381
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-sandbox:
+        condition: service_healthy
+    profiles: ["seed"]
+
+  # Portal database: users, question banks, submissions
+  mongo:
+    image: docker.io/library/mongo:8
+    ports:
+      - "127.0.0.1:27018:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Sandbox MongoDB where student queries run (auth enabled, like production)
+  mongo-sandbox:
+    image: docker.io/library/mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: dev
+    ports:
+      - "127.0.0.1:42222:27017"
+    volumes:
+      - mongo-sandbox-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Sandbox Redis: one RediSearch-enabled instance per sample account
+  redis-sandbox:
+    build: ./redis-sandbox
+    image: dbs2-task-checker-redis-sandbox
+    ports:
+      - "127.0.0.1:6380:6380"
+      - "127.0.0.1:6381:6381"
+    volumes:
+      - ./redis-sandbox/instances.dev.conf:/instances.conf:ro,z
+      - redis-sandbox-data:/data
+
+volumes:
+  mongo-data:
+  mongo-sandbox-data:
+  redis-sandbox-data:

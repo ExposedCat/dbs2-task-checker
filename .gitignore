@@ -1,3 +1,9 @@
 # Deployment configuration (see *.example files)
 .env
 redis-sandbox/instances.conf
+
+# Local development scratch (exports for compose.dev.yaml)
+.dev/
+
+# Portal secrets (SSH key for the password reset)
+secrets/

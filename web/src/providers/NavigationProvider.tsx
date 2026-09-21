@@ -3,7 +3,8 @@ import React from 'react';
 import { buildProvider } from '~/utils/provider.js';
 
 export type NavigationContext = {
-  page: 'dataset' | 'admin';
+  /** `dataset`: the student's test page; `datasets` / `users`: admin pages */
+  page: 'dataset' | 'datasets' | 'users';
   currentDataset: string | null;
   selectDataset: (data: Partial<Omit<NavigationContext, 'selectDataset'>>) => void;
 };

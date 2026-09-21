@@ -3,9 +3,10 @@ import React from 'react';
 import { Flex } from '~/components/elements/Flex.js';
 import { useGetRequest } from '~/hooks/useGetRequest.js';
 import { useSessionToken } from '~/hooks/useSessionToken.js';
-import { AdminPage } from '~/pages/Admin.js';
 import { DatasetPage } from '~/pages/Dataset.js';
+import { DatasetsPage } from '~/pages/Datasets.js';
 import { LoginPage } from '~/pages/Login.js';
+import { UsersPage } from '~/pages/Users.js';
 import { ProvideDatasets } from '~/providers/DatasetsProvider.js';
 import type { Dataset } from '~/providers/DatasetsProvider.js';
 import { useNavigation } from '~/providers/NavigationProvider.js';
@@ -55,7 +56,9 @@ const AuthorizedBody: React.FC = () => {
       {query.state === 'success' && (
         <ProvideDatasets value={{ datasets: query.data, refetch: query.refetch }}>
           <TopBar />
-          {page === 'admin' ? <AdminPage /> : <DatasetPage />}
+          {page === 'datasets' && <DatasetsPage />}
+          {page === 'users' && <UsersPage />}
+          {page === 'dataset' && <DatasetPage />}
         </ProvideDatasets>
       )}
     </>
