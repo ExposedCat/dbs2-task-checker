@@ -1,0 +1,3 @@
+# Deployment configuration (see *.example files)
+.env
+redis-sandbox/instances.conf

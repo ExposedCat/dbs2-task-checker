@@ -1,0 +1,18 @@
+# SITE_ADDRESS controls what Caddy binds to:
+#   ":80"          plain HTTP on port 80 (default; no port needed in the URL)
+#   "example.com"  HTTPS on 443 with an automatically issued certificate, HTTP->HTTPS redirect
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# API: strip the /api prefix and hand over to the server container
+	handle_path /api/* {
+		reverse_proxy {$API_UPSTREAM:server:8080}
+	}
+
+	# Everything else: the static React bundle (SPA fallback to index.html)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

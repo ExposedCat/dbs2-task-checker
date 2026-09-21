@@ -3,6 +3,10 @@ import { createClient } from 'redis';
 import { parseCommand } from '../escape.js';
 import type { BaseExecuteArgs, ExecuteResult } from './index.js';
 
+// Host of the sandbox Redis instances where student queries are executed.
+// Each user has their own instance, distinguished by `user.port`.
+const REDIS_SANDBOX_HOST = process.env.REDIS_SANDBOX_HOST ?? '127.0.0.1';
+
 export type LoadRedisArgs = Omit<ExecuteRedisArgs, 'queries'>;
 
 export type LoadRedisResponse = {
@@ -17,7 +21,7 @@ export type LoadRedisResponse = {
 
 async function loadRedis({ user, dataset, noReset }: LoadRedisArgs): Promise<LoadRedisResponse> {
   const client = createClient({
-    url: `redis://default:${user.password}@127.0.0.1:${user.port}`,
+    url: `redis://default:${user.password}@${REDIS_SANDBOX_HOST}:${user.port}`,
   });
 
   await client.connect();

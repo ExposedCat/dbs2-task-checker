@@ -1,0 +1,34 @@
+FROM docker.io/oven/bun:1
+
+WORKDIR /app
+
+# `mongosh` is required at runtime: student queries are executed against the
+# sandbox MongoDB through the mongosh CLI (see src/services/execute/mongodb.ts).
+RUN export DEBIAN_FRONTEND=noninteractive \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+  && curl -fsSL https://pgp.mongodb.com/server-8.0.asc \
+    | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg \
+  && echo "deb [signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" \
+    > /etc/apt/sources.list.d/mongodb-org-8.0.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends mongodb-mongosh \
+  && apt-get purge -y --auto-remove curl gnupg \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile --production
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+
+# Runtime datasets are mounted here (see compose.yaml and datasets/README.md)
+RUN mkdir -p datasets && chown -R bun:bun /app
+USER bun
+
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["bun", "run", "src/index.ts"]

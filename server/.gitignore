@@ -43,3 +43,4 @@ package-lock.json
 **/*.bun
 
 datasets/**
+!datasets/README.md

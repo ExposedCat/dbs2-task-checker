@@ -1,0 +1,13 @@
+# Sandbox Redis for student queries.
+#
+# The server connects each student to `REDIS_SANDBOX_HOST:<user.port>` with the student's
+# password and needs RediSearch (FT.* commands), so this image runs one redis-stack-server
+# per configured student, all in one container behind one hostname.
+FROM docker.io/redis/redis-stack-server:latest
+
+COPY entrypoint.sh /usr/local/bin/redis-sandbox
+RUN chmod +x /usr/local/bin/redis-sandbox
+
+ENV INSTANCES_FILE=/instances.conf
+
+ENTRYPOINT ["/usr/local/bin/redis-sandbox"]

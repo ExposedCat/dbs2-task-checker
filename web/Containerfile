@@ -1,0 +1,25 @@
+# --- Build the static bundle ---------------------------------------------------
+FROM docker.io/library/node:22-alpine AS build
+
+WORKDIR /app
+
+# panda.config.ts is needed by the `prepare` script (panda codegen) run by `npm ci`
+COPY package.json package-lock.json panda.config.ts ./
+RUN npm ci
+
+COPY . .
+
+# Base URL of the API as seen by the browser. `/api` is relative to the site itself and
+# is proxied to the server by Caddy (see Caddyfile), so no host/port is baked in.
+ARG VITE_BASE_API_URL=/api
+ENV VITE_BASE_API_URL=$VITE_BASE_API_URL
+
+RUN npm run build
+
+# --- Serve it + reverse-proxy the API -------------------------------------------
+FROM docker.io/library/caddy:2-alpine
+
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/dist /srv
+
+EXPOSE 80 443

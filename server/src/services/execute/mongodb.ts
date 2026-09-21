@@ -2,6 +2,11 @@ import { $, type ShellError } from 'bun';
 import type { User } from '../user.js';
 import type { BaseExecuteArgs, ExecuteResult } from './index.js';
 
+// Sandbox MongoDB where student queries are executed (NOT the portal database)
+const MONGO_SANDBOX_HOST = process.env.MONGO_SANDBOX_HOST ?? '127.0.0.1';
+const MONGO_SANDBOX_PORT = process.env.MONGO_SANDBOX_PORT ?? '42222';
+const MONGO_DATASET_PATH = `${process.cwd()}/datasets/mongodb/dataset.js`;
+
 export type LoadMongodbArgs = Omit<BaseExecuteArgs, 'queries' | 'dataset'>;
 
 export type LoadMongodbResponse = {
@@ -9,10 +14,25 @@ export type LoadMongodbResponse = {
   ok: boolean;
 };
 
+/** mongosh connection arguments: authenticate as the student against their own database */
+function mongoshArgs(user: User): string[] {
+  const database = encodeURIComponent(user.user);
+  return [
+    '-u',
+    database,
+    '-p',
+    encodeURIComponent(user.password),
+    '--host',
+    MONGO_SANDBOX_HOST,
+    '--port',
+    MONGO_SANDBOX_PORT,
+    database,
+  ];
+}
+
 async function executeAuthorizedRaw(user: User, command: string): Promise<{ ok: boolean; output: string }> {
   try {
-    const result =
-      await $`mongosh -u ${encodeURIComponent(user.user)} -p '${encodeURIComponent(user.password)}' --port 42222 ${encodeURIComponent(user.user)} --eval "${command}"`;
+    const result = await $`mongosh ${mongoshArgs(user)} --eval "${command}"`;
     return { ok: result.exitCode === 0, output: result.text() };
   } catch (_error) {
     const error = _error as ShellError;
@@ -24,9 +44,9 @@ async function executeAuthorizedRaw(user: User, command: string): Promise<{ ok: 
 async function loadMongoDb({ user, noReset }: LoadMongodbArgs): Promise<LoadMongodbResponse> {
   if (!noReset) {
     try {
-      await $`mongosh -u ${encodeURIComponent(user.user)} -p '${encodeURIComponent(user.password)}' --port 42222 ${encodeURIComponent(user.user)} --eval 'db.getCollectionNames().forEach(collection => db[collection].drop())'`;
+      await $`mongosh ${mongoshArgs(user)} --eval 'db.getCollectionNames().forEach(collection => db[collection].drop())'`;
 
-      await $`mongosh -u ${encodeURIComponent(user.user)} -p '${encodeURIComponent(user.password)}' --port 42222 ${encodeURIComponent(user.user)} /home/yuliia/web/dbs2-task-checker-server/datasets/mongodb/dataset.js`;
+      await $`mongosh ${mongoshArgs(user)} ${MONGO_DATASET_PATH}`;
 
       return { ok: true, response: 'Dataset loaded' };
     } catch (_error) {

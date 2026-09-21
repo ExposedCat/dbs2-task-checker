@@ -29,6 +29,6 @@ const app = new Elysia()
   .use(SetDatasetKindsRoute)
   .use(RequireErrorFallback)
   .use(DeleteDatasetRoute)
-  .listen(8080);
+  .listen(Number(process.env.PORT ?? 8080));
 
 console.log(`🦊 DBS Portal API is running at http://${app.server?.hostname}:${app.server?.port}`);
