@@ -1,0 +1,25 @@
+#!/usr/bin/python3 -I
+"""No sudo or passwords: the host broker verifies this process's Unix peer UID."""
+import http.client
+import json
+import pathlib
+import re
+import socket
+import sys
+
+if len(sys.argv) != 2 or not re.fullmatch(r'[A-F0-9]{4}(?:-[A-F0-9]{4}){3}', sys.argv[1]):
+    sys.exit('Usage: portal-login XXXX-XXXX-XXXX-XXXX')
+try:
+    conn = http.client.HTTPConnection('localhost', timeout=10)
+    conn.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    conn.sock.settimeout(10)
+    conn.sock.connect(str(pathlib.Path(__file__).resolve().parent / 'login.sock'))
+    conn.request('POST', '/approve', json.dumps({'code': sys.argv[1]}), {'Content-Type': 'application/json'})
+    response = conn.getresponse()
+    result = json.loads(response.read(4096))
+    conn.close()
+    if not result['ok']:
+        sys.exit(result['error'])
+    print('Portal login approved for ' + result['data']['login'] + '. Return to your browser.')
+except (OSError, ValueError, http.client.HTTPException) as error:
+    sys.exit('portal-login: ' + str(error))

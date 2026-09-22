@@ -6,6 +6,7 @@ import { useSessionToken } from '~/hooks/useSessionToken.js';
 import { DatasetPage } from '~/pages/Dataset.js';
 import { DatasetsPage } from '~/pages/Datasets.js';
 import { LoginPage } from '~/pages/Login.js';
+import { ServicesPage } from '~/pages/Services.js';
 import { UsersPage } from '~/pages/Users.js';
 import { ProvideDatasets } from '~/providers/DatasetsProvider.js';
 import type { Dataset } from '~/providers/DatasetsProvider.js';
@@ -58,6 +59,7 @@ const AuthorizedBody: React.FC = () => {
           <TopBar />
           {page === 'datasets' && <DatasetsPage />}
           {page === 'users' && <UsersPage />}
+          {page === 'services' && <ServicesPage />}
           {page === 'dataset' && <DatasetPage />}
         </ProvideDatasets>
       )}

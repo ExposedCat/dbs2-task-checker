@@ -3,10 +3,12 @@ import type { Collection } from 'mongodb';
 
 import type { Dataset } from './dataset';
 import type { User } from './user';
+import type { ReferenceCacheEntry } from './reference-cache';
 
 export type Database = {
   users: Collection<User>;
   datasets: Collection<Dataset>;
+  referenceCache: Collection<ReferenceCacheEntry>;
 };
 
 export async function createDbConnection(connectionString: string) {
@@ -17,6 +19,8 @@ export async function createDbConnection(connectionString: string) {
   const users = mongoDb.collection<User>('users');
   const datasets = mongoDb.collection<Dataset>('datasets');
 
-  const database: Database = { users, datasets };
+  const referenceCache = mongoDb.collection<ReferenceCacheEntry>('referenceCache');
+  await referenceCache.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  const database: Database = { users, datasets, referenceCache };
   return database;
 }

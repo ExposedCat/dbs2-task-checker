@@ -1,8 +1,7 @@
 # Password reset from the portal
 
 The Users page lets an admin "reset" a student's password: the student's **Linux** password is
-expired (`passwd -e`), so the student has to choose a new one at the next SSH login. Portal and
-database passwords are not changed.
+expired (`passwd -e`), so the student has to choose a new one at the next SSH login. Database passwords are not changed. Portal login uses SSH approval; see [setup](PORTAL-LOGIN.md).
 
 The API runs in a container and cannot touch the host's accounts, so it delegates the operation
 over SSH to a forced command on the host. The chain is:

@@ -15,6 +15,7 @@ export const RequireBase = new Elysia({ name: 'Middleware.Base' })
   .use(
     jwtPlugin({
       name: 'jwt',
+      exp: '8h',
       secret: process.env.JWT_SECRET as string,
       schema: t.Object({
         userId: t.String(),

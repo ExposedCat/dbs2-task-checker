@@ -131,7 +131,7 @@ const ResetPasswordDialog: React.FC<{ login: string; onClose: () => void }> = ({
         {query.state !== 'success' && (
           <>
             <Label
-              text={`The Linux password of ${login} will be expired: the student has to choose a new password at the next SSH login. Portal and database passwords stay unchanged.`}
+              text={`The Linux password of ${login} will be expired: the student has to choose a new password at the next SSH login. Database passwords stay unchanged. Portal login uses SSH approval.`}
             />
             <Button
               colorVariant="error"

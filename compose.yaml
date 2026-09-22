@@ -1,9 +1,4 @@
-# Portal (frontend + API) using databases that already run on the host:
-# the portal MongoDB, the sandbox MongoDB and the per-student Redis instances are reached
-# through host.containers.internal (= the host machine and the ports published on it).
-#
-# For a self-contained setup with bundled databases add the overlay:
-#   podman-compose -f compose.yaml -f compose.local-db.yaml up -d --build
+# Portal API/web with host-managed private grading broker (server/scripts/grading/README.md).
 name: dbs2-task-checker
 
 services:
@@ -26,26 +21,38 @@ services:
 
   # Bun / Elysia API
   server:
+    cpus: 2
+    mem_limit: 1g
+    pids_limit: 128
     build: ./server
     image: dbs2-task-checker-server
     restart: unless-stopped
     environment:
       PORT: 8080
+      REFERENCE_CACHE_VERSION: "${REFERENCE_CACHE_VERSION:-executor-v1}"
+      PORTAL_LOGIN_SOCKET: /run/portal-login/approve.sock
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
       # Portal database: users, question banks, submissions
       DB_CONNECTION_URL: "${DB_CONNECTION_URL:-mongodb://host.containers.internal:27017}"
-      # Sandbox MongoDB where student queries run (one database + user per student)
+      # Personal database endpoints are used only by the admin Services page.
       MONGO_SANDBOX_HOST: "${MONGO_SANDBOX_HOST:-host.containers.internal}"
       MONGO_SANDBOX_PORT: "${MONGO_SANDBOX_PORT:-42222}"
-      # Host of the per-student Redis instances (port = user.port in the portal)
       REDIS_SANDBOX_HOST: "${REDIS_SANDBOX_HOST:-host.containers.internal}"
-      # Only used by scripts/create-user.ts
-      MONGO_SANDBOX_ROOT_URL: "${MONGO_SANDBOX_ROOT_URL:-}"
+      GRADING_BROKER_SOCKET: /run/grading/broker.sock
+      REDIS_GRADING_SOCKET: /run/grading-redis/redis.sock
+      PORTAL_LOGIN_SOCKET_MODE: "666"
+      PORTAL_LOGIN_COMMAND: "${PORTAL_LOGIN_COMMAND:-portal-login}"
       # Password reset of student Linux accounts over SSH (server/scripts/host/README.md).
       # Leave the target empty to disable the feature.
       PASSWORD_RESET_SSH_TARGET: "${PASSWORD_RESET_SSH_TARGET:-}"
       PASSWORD_RESET_SSH_KEY: /run/secrets/portal-ssh-key
+      # Extra endpoints shown on the Services page (the portal/sandbox databases and the Redis
+      # instances are checked automatically): Name=tcp://host:port or Name=http://host:port/
+      INFRA_SERVICES: "${INFRA_SERVICES:-}"
     volumes:
+      - "${PORTAL_LOGIN_DIR:-./run/login}:/run/portal-login:z"
+      - "${GRADING_CONTROL_DIR:-../grading/control}:/run/grading:ro,z"
+      - grading-redis-socket:/run/grading-redis
       # `z` relabels for SELinux hosts (Fedora/RHEL); ignored elsewhere
       - "${DATASETS_DIR:-./server/datasets}:/app/datasets:ro,z"
       # Private key for the password reset; /dev/null when the feature is not used
@@ -57,3 +64,7 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+
+  grading-redis-socket:
+    external: true
+    name: dbs-grading-redis-socket

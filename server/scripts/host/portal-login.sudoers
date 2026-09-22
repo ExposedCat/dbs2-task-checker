@@ -1,0 +1,4 @@
+# No SETENV: identity is derived from the UID supplied by sudo.
+%ds2 ALL=(root) NOPASSWD: /usr/local/libexec/portal-login-approve
+# Instructor account; map it explicitly to the portal account in /etc/portal-login.json.
+yuliia ALL=(root) NOPASSWD: /usr/local/libexec/portal-login-approve

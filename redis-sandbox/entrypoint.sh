@@ -20,11 +20,16 @@ while IFS=: read -r port password || [[ -n "${port:-}" ]]; do
   fi
 
   mkdir -p "/data/$port"
+  digest=$(printf %s "$password" | sha256sum)
+  digest=${digest%% *}
   redis-stack-server \
     --port "$port" \
-    --requirepass "$password" \
+    --user "default on #$digest ~* &* +@all -@admin" \
     --dir "/data/$port" \
     --save 60 1 \
+    --maxmemory "${REDIS_MAXMEMORY:-128mb}" \
+    --maxmemory-policy noeviction \
+    --client-output-buffer-limit "normal 1048576 0 0" \
     --protected-mode no &
   started=$((started + 1))
   echo "redis-sandbox: started instance on port $port"

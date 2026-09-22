@@ -1,0 +1,4 @@
+#!/bin/sh
+# Install as /usr/local/bin/portal-login (root:root, mode 0755).
+# Runs as the calling SSH user; the broker verifies that user's kernel peer UID.
+exec /usr/bin/python3 -I /var/tmp/dbs-portal-login-1001/portal-login "$@"

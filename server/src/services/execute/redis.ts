@@ -1,140 +1,101 @@
 import { ErrorReply, createClient } from 'redis';
-
 import { parseCommand } from '../escape.js';
 import type { BaseExecuteArgs, ExecuteResult } from './index.js';
+import { EXECUTION_TIMEOUT_MS, MAX_OUTPUT_BYTES } from './limits';
+import { gradingBroker } from './broker';
 
-// Host of the sandbox Redis instances where student queries are executed.
-// Each user has their own instance, distinguished by `user.port`.
-const REDIS_SANDBOX_HOST = process.env.REDIS_SANDBOX_HOST ?? '127.0.0.1';
+const REDIS_GRADING_SOCKET = process.env.REDIS_GRADING_SOCKET;
+export type ExecuteRedisArgs = BaseExecuteArgs & { dataset: string[][] };
 
-export type LoadRedisArgs = Omit<ExecuteRedisArgs, 'queries'>;
-
-export type LoadRedisResponse = {
-  response: string;
-} & (
-  | {
-      ok: true;
-      client: ReturnType<typeof createClient>;
-    }
-  | { ok: false; client: null }
-);
-
-async function loadRedis({ user, dataset, noReset }: LoadRedisArgs): Promise<LoadRedisResponse> {
+export async function executeRedis({ queries, dataset, noReset = false }: ExecuteRedisArgs): Promise<ExecuteResult> {
+  if (!REDIS_GRADING_SOCKET) return { ok: false, data: null, error: 'Private Redis grading socket is not configured' };
   const client = createClient({
-    url: `redis://default:${user.password}@${REDIS_SANDBOX_HOST}:${user.port}`,
+    socket: {
+      path: REDIS_GRADING_SOCKET,
+      connectTimeout: 5000,
+      reconnectStrategy: false,
+    },
+    disableOfflineQueue: true,
   });
-
-  await client.connect();
-
-  if (!noReset) {
-    let indexes: string[] = [];
-    let last: string = '<none>';
-    try {
-      indexes = await client.ft._list();
-      for (const index of indexes) {
-        last = index;
+  // node-redis emits transport errors as well as rejecting command promises.
+  client.on('error', () => {});
+  let expired = false;
+  let commandIndex = -1;
+  const normalizedQueries = queries.map(query => query.trim()).filter(Boolean);
+  const close = async () => {
+    if (client.isOpen) await client.disconnect().catch(() => {});
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      reject(new Error('Execution time limit exceeded'));
+      void close(); // QUIT would wait behind a blocking command.
+    }, EXECUTION_TIMEOUT_MS);
+  });
+  const run = async (): Promise<ExecuteResult> => {
+    await client.connect();
+    if (!noReset) {
+      for (const index of await client.ft._list()) {
+        if (expired) throw new Error('Execution time limit exceeded');
         await client.ft.dropIndex(index);
       }
-      await client.flushDb();
-    } catch (error) {
-      const metadata = `Indexes to flush: ${indexes.map(index => `"${index}"`).join(', ')}. Failed on: "${last}"`;
+      await client.flushAll();
+      await client.sendCommand(['SCRIPT', 'FLUSH']);
+      await client.sendCommand(['FUNCTION', 'FLUSH']);
+      for (const command of dataset) {
+        if (expired) throw new Error('Execution time limit exceeded');
+        if (command.length) await client.sendCommand(command);
+      }
+    }
+    if (!normalizedQueries.length) {
       return {
-        ok: false,
-        response:
-          error instanceof Error
-            ? `Unexpected Error (while flushing database): ${error}. ${metadata}`
-            : `Unkown error (while flushing database). ${metadata}`,
-        client: null,
+        ok: true,
+        error: null,
+        data: {
+          response: noReset ? 'Dataset not loaded (noReset = true)' : 'Dataset loaded',
+          skipped: true,
+        },
       };
     }
-
-    try {
-      for (const command of dataset) {
-        if (command.length === 0) {
-          continue;
-        }
-        await client.sendCommand(command);
-      }
-      return { ok: true, response: 'Dataset loaded', client };
-    } catch (error) {
-      const textError =
-        error instanceof Error
-          ? `Unexpected Error (while loading dataset): ${error}`
-          : 'Unkown error (while loading dataset)';
-      await client.quit();
-      return { ok: false, response: textError, client: null };
+    let response = '';
+    let bytes = 0;
+    for (const [index, query] of normalizedQueries.entries()) {
+      if (expired) throw new Error('Execution time limit exceeded');
+      commandIndex = index;
+      const result = await client.sendCommand(parseCommand(query));
+      const text = result !== undefined ? JSON.stringify(result, null, 1) : '<empty>';
+      bytes += Buffer.byteLength(text) + 1;
+      if (bytes > MAX_OUTPUT_BYTES) throw new Error('Execution output limit exceeded');
+      response += `${text}\n`;
     }
-  }
-
-  return { ok: true, response: 'Dataset not loaded (noReset = true)', client };
-}
-
-export type ExecuteRedisArgs = BaseExecuteArgs & {
-  dataset: string[][];
-};
-
-export async function executeRedis({
-  user,
-  queries,
-  dataset,
-  noReset = false,
-}: ExecuteRedisArgs): Promise<ExecuteResult> {
-  const {
-    ok,
-    client,
-    response: loadingResponse,
-  } = await loadRedis({
-    user,
-    dataset,
-    noReset,
-  });
-
-  if (!ok) {
-    return { ok, error: loadingResponse, data: null };
-  }
-
-  if (!client) {
-    return { ok: false, error: 'Redis client was not initialized', data: null };
-  }
-
-  const normalizedQueries = queries.map(query => query.trim()).filter(query => query.length > 0);
-
-  if (normalizedQueries.length === 0) {
-    await client.quit();
-    return {
-      ok: true,
-      data: { response: loadingResponse ?? '', skipped: true },
-      error: null,
-    };
-  }
-
-  let batchResponse = '';
-  for (const [index, singleQuery] of normalizedQueries.entries()) {
-    try {
-      const response = await client.sendCommand(parseCommand(singleQuery));
-      const textResponse = response !== undefined ? JSON.stringify(response, null, 1) : '<empty>';
-      batchResponse += `${textResponse}\n`;
-    } catch (error) {
-      await client.quit();
-      if (error instanceof ErrorReply) {
-        // Redis itself rejected the student's command (unknown command, wrong number of
-        // arguments, WRONGTYPE, ...). That is a normal outcome of an invalid query, so
-        // relay Redis' own message and let the student fix the query.
-        const position = normalizedQueries.length > 1 ? ` (command ${index + 1} of ${normalizedQueries.length})` : '';
-        return { ok: false, error: `Redis error${position}: ${error.message}`, data: null };
-      }
-      const textError =
-        error instanceof Error
-          ? `Unexpected Error (while executing command): ${error}`
-          : 'Unkown error (while executing command)';
-      return { ok: false, error: textError, data: null };
-    }
-  }
-
-  await client.quit();
-  return {
-    ok: true,
-    data: { response: batchResponse },
-    error: null,
+    return { ok: true, error: null, data: { response } };
   };
+  try {
+    return await Promise.race([run(), deadline]);
+  } catch (error) {
+    if (expired || !(error instanceof ErrorReply)) {
+      await close();
+      const recovery = await gradingBroker('/redis-restart', {});
+      if (!recovery.ok) return { ok: false, data: null, error: 'Redis recovery failed; grading is unavailable' };
+    }
+    const position =
+      commandIndex >= 0 && normalizedQueries.length > 1
+        ? ` (command ${commandIndex + 1} of ${normalizedQueries.length})`
+        : '';
+    return {
+      ok: false,
+      data: null,
+      error: expired
+        ? 'Execution time limit exceeded'
+        : error instanceof ErrorReply
+          ? `Redis error${position}: ${error.message}`
+          : error instanceof Error
+            ? error.message
+            : 'Query execution failed',
+    };
+  } finally {
+    clearTimeout(timer);
+    await close();
+  }
 }

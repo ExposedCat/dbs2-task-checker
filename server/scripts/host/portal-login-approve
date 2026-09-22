@@ -1,0 +1,52 @@
+#!/usr/bin/python3 -I
+"""Root-owned sudo helper. Caller identity comes only from sudo's authenticated UID."""
+import http.client
+import json
+import os
+import pwd
+import re
+import socket
+import sys
+
+
+def main():
+    if os.geteuid() != 0 or not os.environ.get('SUDO_UID', '').isdigit():
+        raise ValueError('Run portal-login from your own SSH account')
+    uid = int(os.environ['SUDO_UID'])
+    if uid == 0:
+        raise ValueError('Run portal-login from your own SSH account, not a root shell')
+    account = pwd.getpwuid(uid).pw_name
+    if len(sys.argv) != 2 or not re.fullmatch(r'[A-F0-9]{4}(?:-[A-F0-9]{4}){3}', sys.argv[1]):
+        raise ValueError('Usage: portal-login XXXX-XXXX-XXXX-XXXX')
+    config_path = '/etc/portal-login.json'
+    stat = os.stat(config_path)
+    if stat.st_uid != 0 or stat.st_mode & 0o022:
+        raise ValueError('portal-login configuration must be root-owned and not writable by group/others')
+    with open(config_path) as file:
+        config = json.load(file)
+    login = config.get('accounts', {}).get(account, account)
+    if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,63}', login):
+        raise ValueError('Invalid portal account mapping')
+    # Do not accept identity from arguments, USER, LOGNAME, or the browser.
+    connection = http.client.HTTPConnection('localhost', timeout=5)
+    connection.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    connection.sock.settimeout(5)
+    connection.sock.connect(config['socket'])
+    try:
+        connection.request('POST', '/approve', json.dumps({'code': sys.argv[1], 'login': login}),
+                           {'Content-Type': 'application/json'})
+        response = connection.getresponse()
+        payload = response.read(4096)
+        if response.status != 200:
+            raise ValueError(json.loads(payload).get('error', 'Login approval failed'))
+    finally:
+        connection.close()
+    print(f'Portal login approved for {login}. Return to the browser that displayed this code.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, OSError, KeyError, http.client.HTTPException) as error:
+        print(f'portal-login: {error}', file=sys.stderr)
+        sys.exit(1)

@@ -4,6 +4,8 @@ import type { WithId } from 'mongodb';
 import type { Database } from './database';
 import type { Dataset } from './dataset';
 import { execute } from './execute/index';
+import { executionDatasetHash } from './execute/dataset-identity';
+import { getOrComputeReference } from './reference-cache';
 import type { BaseExecuteArgs, DatasetName } from './execute/index';
 import type { ServiceResponse } from './response';
 
@@ -16,7 +18,6 @@ export type Submission = {
 export type User = {
   user: string;
   port: number;
-  password: string;
   testSession: TestSession | null;
   submissions: Submission[];
   admin: boolean;
@@ -38,28 +39,6 @@ export type TestSession = {
   }[];
 };
 
-export type LoginUserArgs = {
-  database: Database;
-  login: string;
-  password: string;
-};
-
-export async function loginUser(args: LoginUserArgs) {
-  const { database, login, password } = args;
-
-  const user = await database.users.findOne({ user: login });
-  if (!user) {
-    return null;
-  }
-
-  const passwordCorrect = password === user.password;
-  if (!passwordCorrect) {
-    return null;
-  }
-
-  return user._id.toString();
-}
-
 export type GetUserArgs = {
   database: Database;
   userId: string;
@@ -69,7 +48,7 @@ export async function getUser(args: GetUserArgs) {
   const { database, userId } = args;
 
   try {
-    return await database.users.findOne({ _id: new ObjectId(userId) });
+    return await database.users.findOne({ _id: new ObjectId(userId) }, { projection: { password: 0 } });
   } catch {
     return null;
   }
@@ -280,6 +259,7 @@ export async function startTestSession({
 
 export type ExecuteQuestionArgs = BaseExecuteArgs & {
   database: Database;
+  user: User;
 };
 
 export type ExecuteQuestionResult = ServiceResponse<{
@@ -383,7 +363,6 @@ export async function executeQuestion({
     const result = await execute({
       datasetId,
       queries: [currentTask.test],
-      user,
       noReset: true,
     });
 
@@ -395,44 +374,52 @@ export async function executeQuestion({
     return result;
   };
 
-  const userResult = await execute({ datasetId, queries, user });
+  // Cache the exact task snapshot used by this session, not the current question bank.
+  // Hash again after execution to reject dataset edits during a grading operation.
+  const datasetHash = await executionDatasetHash(datasetId);
+  const assertDatasetUnchanged = async () => {
+    if ((await executionDatasetHash(datasetId)) !== datasetHash) {
+      throw new Error('Dataset changed during grading; please retry');
+    }
+  };
+  const reference = await getOrComputeReference(
+    database.referenceCache,
+    {
+      datasetId,
+      datasetHash,
+      solution: currentTask.solution,
+      test: currentTask.test,
+      executorVersion: process.env.REFERENCE_CACHE_VERSION ?? 'executor-v1',
+      scope: 'shared-private-grading-v1',
+    },
+    async () => {
+      const correctResult = await execute({ datasetId, queries: currentTask.solution });
+      if (!correctResult.ok || correctResult.data.skipped) {
+        throw new Error('Failed to execute reference solution. Please report to your teacher');
+      }
+      const correctTest = await getFinalResponse(correctResult.data.response);
+      if (!correctTest.ok) throw new Error('Failed to verify reference solution. Please report to your teacher');
+      await assertDatasetUnchanged();
+      return {
+        response: correctResult.data.response.trim(),
+        testResponse: currentTask.test ? correctTest.data.response.trim() : null,
+      };
+    },
+  );
+
+  // Reference execution (on a miss) is complete before student code starts. This call
+  // always resets/reloads, so reference mutations cannot leak into the submission.
+  const userResult = await execute({ datasetId, queries });
   if (!userResult.ok) return userResult;
-
-  if (userResult.data?.skipped) {
-    return await finalizeTask({
-      userSolution: normalizedQueries,
-      correct: false,
-      response: null,
-      testResponse: null,
-      userResponse: null,
-      userTestResponse: null,
-    });
-  }
   const userTest = await getFinalResponse(userResult.data.response);
-  if (!userTest.ok) {
-    return error500;
-  }
+  if (!userTest.ok) return error500;
+  await assertDatasetUnchanged();
 
-  const correctResult = await execute({
-    datasetId,
-    queries: currentTask.solution,
-    user,
-  });
-  if (!correctResult.ok) {
-    console.error('Failed to execute test query', correctResult.error);
-    return error500;
-  }
-  const correctTest = await getFinalResponse(correctResult.data.response);
-  if (!correctTest.ok) {
-    console.error('Failed to execute test', correctTest.error);
-    return error500;
-  }
-
-  const isCorrect = userTest.data.response.trim() === correctTest.data.response.trim();
+  const response = reference.response;
+  const testResponse = reference.testResponse;
   const userResponse = userResult.data.response.trim();
   const userTestResponse = currentTask.test ? userTest.data.response.trim() : null;
-  const response = correctResult.data.response.trim();
-  const testResponse = currentTask.test ? correctTest.data.response.trim() : null;
+  const isCorrect = userTest.data.response.trim() === (testResponse ?? response);
 
   return await finalizeTask({
     userSolution: queries,

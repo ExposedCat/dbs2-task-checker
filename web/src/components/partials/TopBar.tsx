@@ -47,6 +47,12 @@ export const TopBar: React.FC = () => {
               colorVariant="warning"
               onClick={() => update({ page: 'users' })}
             />
+            <Button
+              label="Services"
+              variant={page === 'services' ? 'filled' : 'outline'}
+              colorVariant="warning"
+              onClick={() => update({ page: 'services' })}
+            />
           </>
         )}
       </Flex>
