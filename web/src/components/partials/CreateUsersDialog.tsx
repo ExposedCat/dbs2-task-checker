@@ -2,6 +2,7 @@ import React from 'react';
 import { FaPlus, FaTrash } from 'react-icons/fa';
 import { Button } from '../elements/Button';
 import { Flex } from '../elements/Flex';
+import { FilePicker } from '../elements/FilePicker';
 import { Input } from '../elements/Input';
 import { Label } from '../elements/Label';
 import { Popup } from '../elements/Popup';
@@ -37,28 +38,28 @@ export function CreateUsersDialog({ onClose, onCreated }: { onClose: () => void;
   };
 
   return (
-    <Popup title="Create users" open onClose={() => { if (!submitting) onClose(); }}>
+    <Popup title="Create users" wide open onClose={() => { if (!submitting) onClose(); }}>
       <form onSubmit={submit}>
-        <Flex direction="column" gap="sm" maxWidth="container.lg">
+        <Flex direction="column" gap="sm">
           <Label text={`Enter a name and password, or upload a TXT file with one name:password per line. Short names receive the f${String(new Date().getFullYear()).slice(-2)}_ prefix; full logins keep theirs. Passwords need at least 6 characters.`} />
           <Label text="To retry a failed creation, enter the same login and password." />
-          <Flex direction="column" gap="xs" maxHeight="300px" overflowY="auto">
+          <Flex direction="column" gap="xs">
             {rows.map((row, index) => (
               <Flex key={row.id} gap="xs" align="center">
-                <Input aria-label={`Name ${index + 1}`} placeholder="Name" autoComplete="off" value={row.name} disabled={submitting}
+                <Input style={{ flex: '1 1 0', minWidth: 0, width: 0 }} aria-label={`Name ${index + 1}`} placeholder="Name" autoComplete="off" value={row.name} disabled={submitting}
                   onValueChange={value => update(row.id, 'name', value)} />
-                <Input aria-label={`Password ${index + 1}`} placeholder="Password" type="password" autoComplete="new-password" value={row.password} disabled={submitting}
+                <Input style={{ flex: '1 1 0', minWidth: 0, width: 0 }} aria-label={`Password ${index + 1}`} placeholder="Password" type="password" autoComplete="new-password" value={row.password} disabled={submitting}
                   onValueChange={value => update(row.id, 'password', value)} />
-                <Button type="button" icon={FaTrash} title="Remove row" aria-label={`Remove row ${index + 1}`} variant="outline" colorVariant="error" disabled={submitting}
+                <Button type="button" style={{ flexShrink: 0 }} icon={FaTrash} title="Remove row" aria-label={`Remove row ${index + 1}`} variant="outline" colorVariant="error" disabled={submitting}
                   onClick={() => setRows(current => current.filter(item => item.id !== row.id))} />
               </Flex>
             ))}
           </Flex>
           <Button type="button" icon={FaPlus} label="Add row" variant="outline" disabled={submitting || rows.length >= 500}
             onClick={() => setRows(current => [...current, { id: nextId.current++, name: '', password: '' }])} />
-          <label>
-            <Label text="Upload TXT file" />
-            <Input type="file" accept=".txt,text/plain" aria-label="Upload TXT file" disabled={submitting} onChange={async event => {
+          <Flex direction="column" gap="xs">
+            <Label text="OR" style={{ textAlign: 'center' }} />
+            <FilePicker showFileStatus accept=".txt,text/plain" aria-label="Upload TXT file" disabled={submitting} onChange={async event => {
               const file = event.currentTarget.files?.[0];
               const version = ++fileVersion.current;
               setError(null);
@@ -74,7 +75,7 @@ export function CreateUsersDialog({ onClose, onCreated }: { onClose: () => void;
                 if (version === fileVersion.current) setReadingFile(false);
               }
             }} />
-          </label>
+          </Flex>
           {error && <ErrorCard error={error} />}
           <Flex gap="sm">
             <Button type="button" label="Cancel" variant="outline" disabled={submitting} onClick={onClose} />

@@ -4,10 +4,10 @@ import React from 'react';
 import { Button } from './Button';
 import type { InputProps } from './Input';
 
-export type FilePickerProps = Omit<InputProps, 'type'>;
+export type FilePickerProps = Omit<InputProps, 'type'> & { showFileStatus?: boolean };
 
 export const FilePicker: React.FC<FilePickerProps> = React.forwardRef((props, ref) => {
-  const { label, variant = 'outline', colorVariant = 'active', disabled, onValueChange, ...native } = props;
+  const { label, variant = 'outline', colorVariant = 'active', disabled, onValueChange, showFileStatus = false, ...native } = props;
 
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -34,8 +34,9 @@ export const FilePicker: React.FC<FilePickerProps> = React.forwardRef((props, re
       <Button
         type="button"
         {...{ variant, colorVariant, disabled }}
-        label={file ?? 'Select file...'}
+        label={showFileStatus ? `Choose File · ${file ?? 'No file chosen'}` : file ?? 'Select file...'}
         onClick={forwardClick}
+        style={{ overflowWrap: 'anywhere' }}
       />
       <input
         type="file"

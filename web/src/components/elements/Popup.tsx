@@ -9,9 +9,10 @@ export type PopupProps = {
   open: boolean;
   title: string;
   onClose: () => void;
+  wide?: boolean;
 };
 
-export const Popup: React.FC<React.PropsWithChildren<PopupProps>> = ({ open, title, children, onClose }) => {
+export const Popup: React.FC<React.PropsWithChildren<PopupProps>> = ({ open, title, children, onClose, wide = false }) => {
   const onBackgroundClick = React.useCallback<React.MouseEventHandler>(
     event => {
       if (event.target === event.currentTarget) {
@@ -45,7 +46,10 @@ export const Popup: React.FC<React.PropsWithChildren<PopupProps>> = ({ open, tit
             background: 'white',
             padding: 'sm',
             borderRadius: 'common',
-            minWidth: 'container.lg',
+            minWidth: wide ? '0' : 'container.lg',
+            width: wide ? 'min(900px, calc(100vw - 32px))' : undefined,
+            maxHeight: wide ? 'calc(100dvh - 32px)' : undefined,
+            overflowY: wide ? 'auto' : undefined,
           })}
         >
           <Flex justify="space-between">
