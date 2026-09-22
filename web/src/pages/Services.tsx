@@ -127,7 +127,10 @@ export function ServicesPage() {
                   <Label text={`${redisSummary.total} students`} className={monoStyles} />
                 </td>
                 <td>
-                  <StatusBadge ok={redisSummary.total > 0 && redisSummary.up === redisSummary.total} latencyMs={null} />
+                  <Badge
+                    text={redisSummary.up === 0 ? 'down' : redisSummary.up === redisSummary.total ? 'up' : 'partial'}
+                    tone={redisSummary.up === 0 ? 'error' : redisSummary.up === redisSummary.total ? 'success' : 'warning'}
+                  />
                 </td>
                 <td>
                   <Flex direction="column" align="start" gap="sm" maxWidth="container.lg">
@@ -144,7 +147,6 @@ export function ServicesPage() {
                     />
                     {redisExpanded && (
                       <Flex id={redisDetailsId} direction="column" gap="sm">
-                        <Label text="Green: reachable · Yellow: no port assigned · Red: unavailable" />
                         <Flex gap="xs" wrap="wrap">
                           {query.data.redis.map((instance, index) => (
                             <Badge
