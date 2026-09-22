@@ -62,9 +62,22 @@ Anything else is refused by the forced command (`ssh -i secrets/portal_ssh_key y
 
 The Delete button confirms the exact login and uses the same SSH key/target with
 `delete fYY_login`. While it runs, all buttons for that login are disabled and row
-text is red. Success displays “Deleted”; errors allow retrying. The existing
-`~/scripts/users/users.bash remove -` removes the Linux account, home and database
-resources; **portal records and submissions are preserved** by that script.
+text is red. The button is icon-only; successfully deleted rows disappear. Multiple
+selections queue in the browser, and host removals wait for the provisioning lock.
+Errors allow retrying. `~/scripts/users/users.bash remove -` removes the Linux
+account, home and database resources, then deletes all portal records (including
+submissions and legacy duplicates) for the exact login.
+
+Update the existing provisioning scripts as `yuliia` before deploying the portal:
+
+```sh
+python3 server/scripts/host/update-user-deletion.py
+```
+
+The updater checks the expected source before changing any files, keeps backups
+with the `.before-portal-deletion` suffix, and can safely be run again. It adds
+`mongo-admin portal-remove`, calls it only after account cleanup succeeds, and
+makes removals wait for the global lock. It does not delete any accounts itself.
 
 Update the forced command as the infrastructure user:
 

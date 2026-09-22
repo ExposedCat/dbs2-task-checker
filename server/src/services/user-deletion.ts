@@ -19,10 +19,10 @@ export async function deleteUser({ login }: { login: string }): Promise<ServiceR
     const command = `delete ${login}`;
     const result = await $`ssh -i ${key} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/portal_known_hosts ${target} ${command}`.quiet().nothrow();
     if (result.exitCode !== 0) {
-      console.error(`Account deletion failed for ${login} (exit ${result.exitCode})`);
+      console.error(`Account deletion failed for ${login} (exit ${result.exitCode}): ${result.stderr.toString().trim()}`);
       return { ok: false, data: null, error: 'Account deletion failed. Some resources may already have been removed; check the host configuration and logs before retrying.' };
     }
-    return { ok: true, error: null, data: { message: `Account ${login} deleted. Portal records and submissions preserved.` } };
+    return { ok: true, error: null, data: { message: `Account ${login} deleted.` } };
   } catch {
     return { ok: false, data: null, error: 'Could not execute account deletion' };
   } finally {

@@ -251,15 +251,15 @@ const UserRow: React.FC<{ info: UserInfo; deletion?: DeletionState; onDelete: (l
         <Flex gap="xs">
           <CopyLoginButton login={info.user} disabled={disabled} />
           <ResetPasswordButton login={info.user} disabled={disabled} />
-          <Button icon={FaTrash} label={deleting ? 'Deleting…' : deletion?.state === 'success' ? 'Deleted' : 'Delete'}
+          <Button icon={FaTrash} aria-label={deleting ? `Deleting ${info.user}` : `Delete account ${info.user}`}
             variant="outline" colorVariant="error" disabled={disabled}
             title={`Delete account ${info.user}`} onClick={() => setConfirmOpen(true)} />
         </Flex>
-        {deletion?.state === 'error' && <ErrorCard error={deletion.error} />}
+        {deletion?.state === 'error' && <Flex marginTop="xs"><ErrorCard error={deletion.error} /></Flex>}
         {confirmOpen && (
           <Popup title={`Delete ${info.user}?`} open onClose={() => setConfirmOpen(false)}>
             <Flex direction="column" gap="sm" maxWidth="container.lg">
-              <Label text={`Permanently delete ${info.user}'s Linux account, home directory, and database resources? Portal records and submissions will be preserved. This cannot be undone.`} />
+              <Label text={`Permanently delete ${info.user}'s Linux account, home directory, database resources, portal account, and submissions? This cannot be undone.`} />
               <Flex gap="sm">
                 <Button label="Cancel" variant="outline" onClick={() => setConfirmOpen(false)} />
                 <Button label={`Delete ${info.user}`} colorVariant="error" onClick={() => {
@@ -280,23 +280,33 @@ export function UsersPage() {
   const token = useSessionToken();
   const [deletions, setDeletions] = React.useState<Record<string, DeletionState>>({});
   const pending = React.useRef(new Set<string>());
-  const deleteUser = async (login: string) => {
+  const deletionQueue = React.useRef<Promise<void>>(Promise.resolve());
+  const deleteUser = (login: string) => {
     if (pending.current.has(login)) return;
     pending.current.add(login);
     setDeletions(current => ({ ...current, [login]: { state: 'loading' } }));
-    const result = await httpRequest<{ message: string }>({
-      method: 'POST', path: '/delete-user', authorization: token, contentType: 'json', body: { user: login },
+    // Keep every selected row busy immediately, but send one deletion at a time.
+    // This avoids spending the HTTP timeout waiting for another provisioning job.
+    deletionQueue.current = deletionQueue.current.then(async () => {
+      try {
+        const result = await httpRequest<{ message: string }>({
+          method: 'POST', path: '/delete-user', authorization: token, contentType: 'json', body: { user: login },
+        });
+        setDeletions(current => ({ ...current, [login]: result.ok
+          ? { state: 'success' } : { state: 'error', error: result.error } }));
+        if (result.ok) query.refetch();
+      } catch (error) {
+        setDeletions(current => ({ ...current, [login]: { state: 'error', error: String(error) } }));
+      } finally {
+        pending.current.delete(login);
+      }
     });
-    pending.current.delete(login);
-    setDeletions(current => ({ ...current, [login]: result.ok
-      ? { state: 'success' } : { state: 'error', error: result.error } }));
-    if (result.ok) query.refetch();
   };
   const [prefixes, setPrefixes] = React.useState<string[]>(() => [`f${String(new Date().getFullYear()).slice(-2)}`]);
   const dropdown = React.useRef<HTMLDivElement>(null);
   const [prefixMenuOpen, setPrefixMenuOpen] = React.useState(false);
   const prefixMenuId = React.useId();
-  const users = query.state === 'success' ? query.data : [];
+  const users = query.state === 'success' ? query.data.filter(info => deletions[info.user]?.state !== 'success') : [];
   const availablePrefixes = [...new Set(users.map(info => usernamePrefix(info.user)))].sort();
   const visibleUsers = users.filter(info => prefixes.includes(usernamePrefix(info.user)));
   const prefixLabel = (prefix: string) => prefix || 'No prefix';
@@ -359,7 +369,7 @@ export function UsersPage() {
       </Flex>
       {query.state === 'loading' && <Label text="Loading..." />}
       {query.state === 'error' && <ErrorCard error={query.error} />}
-      {query.state === 'success' && query.data.length === 0 && <Label text="There are no users yet" />}
+      {query.state === 'success' && users.length === 0 && <Label text="There are no users yet" />}
       {query.state === 'success' && users.length > 0 && visibleUsers.length === 0 && <Label text="No users match the selected prefixes" />}
       {query.state === 'success' && visibleUsers.length > 0 && (
         <Flex maxWidth="container.full" direction="column" align="center" className={scrollStyles}>
@@ -375,8 +385,8 @@ export function UsersPage() {
             </thead>
             <tbody>
               {/* Logins are not unique in the collection (legacy duplicate records), hence the index */}
-              {visibleUsers.map((info, index) => (
-                <UserRow key={`${index}-${info.user}`} info={info} deletion={deletions[info.user]} onDelete={deleteUser} />
+              {visibleUsers.map(info => (
+                <UserRow key={`${info.user}-${users.filter(user => user.user === info.user).indexOf(info)}`} info={info} deletion={deletions[info.user]} onDelete={deleteUser} />
               ))}
             </tbody>
           </table>
