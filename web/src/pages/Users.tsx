@@ -1,12 +1,13 @@
 import { css } from '@styled-system/css/css.mjs';
 import React from 'react';
-import { FaCheck, FaChevronDown, FaChevronUp, FaKey, FaSyncAlt, FaTerminal, FaTrash } from 'react-icons/fa';
+import { FaCheck, FaChevronDown, FaChevronUp, FaKey, FaPlus, FaSyncAlt, FaTerminal, FaTrash } from 'react-icons/fa';
 import { Badge } from '~/components/elements/Badge';
 import { Button } from '~/components/elements/Button';
 import { Flex } from '~/components/elements/Flex';
 import { Label } from '~/components/elements/Label';
 import { Page } from '~/components/elements/Page.js';
 import { Popup } from '~/components/elements/Popup';
+import { CreateUsersDialog } from '~/components/partials/CreateUsersDialog';
 import { ErrorCard } from '~/components/partials/ErrorCard';
 import { useGetRequest } from '~/hooks/useGetRequest';
 import { usePostRequest } from '~/hooks/usePostRequest';
@@ -17,6 +18,8 @@ import { httpRequest } from '~/services/http';
 export type UserInfo = {
   user: string;
   admin: boolean;
+  created: boolean;
+  creationError: string | null;
   redis: { port: number | null };
   submissions: { datasetId: string; grade: number }[];
   testSession: { datasetId: string; answered: number; total: number } | null;
@@ -28,6 +31,7 @@ const tableStyles = css({
   borderCollapse: 'separate',
   borderSpacing: '0 {spacing.sm}',
   fontSize: 'sm',
+  '& tr[data-creating=true] td, & tr[data-creating=true] td *': { color: 'text.success' },
   '& tr[data-deleting=true] td, & tr[data-deleting=true] td *': { color: 'text.error' },
   '& th': {
     paddingX: 'sm',
@@ -211,15 +215,17 @@ type DeletionState = { state: 'loading' | 'success' | 'error'; error?: string };
 const UserRow: React.FC<{ info: UserInfo; deletion?: DeletionState; onDelete: (login: string) => void }> = ({ info, deletion, onDelete }) => {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const deleting = deletion?.state === 'loading';
-  const disabled = deleting || deletion?.state === 'success';
+  const creating = info.created === false;
+  const disabled = creating || deleting || deletion?.state === 'success';
   const submissions = React.useMemo(() => summarizeSubmissions(info.submissions), [info.submissions]);
 
   return (
-    <tr data-deleting={deleting} aria-busy={deleting}>
+    <tr data-deleting={deleting} data-creating={creating} aria-busy={deleting || (creating && !info.creationError)}>
       <td>
         <Flex align="center" gap="xs">
           <Label text={info.user} className={monoStyles} />
           {info.admin && <Badge text="admin" />}
+          {creating && <Badge tone="success" text={info.creationError ? "Creation failed" : "Creating…"} />}
         </Flex>
       </td>
       <td>
@@ -255,6 +261,7 @@ const UserRow: React.FC<{ info: UserInfo; deletion?: DeletionState; onDelete: (l
             variant="outline" colorVariant="error" disabled={disabled}
             title={`Delete account ${info.user}`} onClick={() => setConfirmOpen(true)} />
         </Flex>
+        {info.creationError && <Flex marginTop="xs"><ErrorCard error={info.creationError} /></Flex>}
         {deletion?.state === 'error' && <Flex marginTop="xs"><ErrorCard error={deletion.error} /></Flex>}
         {confirmOpen && (
           <Popup title={`Delete ${info.user}?`} open onClose={() => setConfirmOpen(false)}>
@@ -278,6 +285,7 @@ const UserRow: React.FC<{ info: UserInfo; deletion?: DeletionState; onDelete: (l
 export function UsersPage() {
   const query = useGetRequest<UserInfo[]>('/users');
   const token = useSessionToken();
+  const [createOpen, setCreateOpen] = React.useState(false);
   const [deletions, setDeletions] = React.useState<Record<string, DeletionState>>({});
   const pending = React.useRef(new Set<string>());
   const deletionQueue = React.useRef<Promise<void>>(Promise.resolve());
@@ -309,6 +317,13 @@ export function UsersPage() {
   const users = query.state === 'success' ? query.data.filter(info => deletions[info.user]?.state !== 'success') : [];
   const availablePrefixes = [...new Set(users.map(info => usernamePrefix(info.user)))].sort();
   const visibleUsers = users.filter(info => prefixes.includes(usernamePrefix(info.user)));
+  const deletableUsers = visibleUsers.filter(info => info.created !== false);
+  const creatingUsers = users.some(info => info.created === false && !info.creationError);
+  React.useEffect(() => {
+    if (!creatingUsers) return;
+    const timer = setInterval(query.refetch, 2000);
+    return () => clearInterval(timer);
+  }, [creatingUsers, query.refetch]);
   const prefixLabel = (prefix: string) => prefix || 'No prefix';
   const [bulkDeletion, setBulkDeletion] = React.useState<{ prefixes: string[]; logins: string[] } | null>(null);
   const deletionInProgress = Object.values(deletions).some(deletion => deletion.state === 'loading');
@@ -326,6 +341,7 @@ export function UsersPage() {
       <Flex align="center" gap="sm" wrap="wrap">
         <Label text="Users" kind="header" />
         <Button icon={FaSyncAlt} variant="outline" disabled={query.state === 'loading'} onClick={query.refetch} title="Reload users" aria-label="Reload users" />
+        <Button icon={FaPlus} variant="outline" colorVariant="success" title="Create users" aria-label="Create users" onClick={() => setCreateOpen(true)} />
         <div ref={dropdown} style={{ position: 'relative' }} onKeyDown={event => {
           if (event.key === 'Escape') {
             setPrefixMenuOpen(false);
@@ -374,17 +390,22 @@ export function UsersPage() {
           colorVariant="error"
           title="Delete all users with selected prefixes"
           aria-label="Delete all users with selected prefixes"
-          disabled={query.state !== 'success' || visibleUsers.length === 0 || deletionInProgress}
+          disabled={query.state !== 'success' || deletableUsers.length === 0 || deletionInProgress}
           onClick={() => {
             setPrefixMenuOpen(false);
-            setBulkDeletion({ prefixes: [...prefixes], logins: [...new Set(visibleUsers.map(info => info.user))] });
+            setBulkDeletion({ prefixes: [...prefixes], logins: [...new Set(deletableUsers.map(info => info.user))] });
           }}
         />
       </Flex>
+      {createOpen && <CreateUsersDialog onClose={() => setCreateOpen(false)} onCreated={logins => {
+        setPrefixes(current => [...new Set([...current, ...logins.map(usernamePrefix)])].sort());
+        setDeletions(current => Object.fromEntries(Object.entries(current).filter(([login]) => !logins.includes(login))));
+        query.refetch();
+      }} />}
       {bulkDeletion && (
         <Popup title={`Delete ${bulkDeletion.logins.length} accounts?`} open onClose={() => setBulkDeletion(null)}>
           <Flex direction="column" gap="sm" maxWidth="container.lg">
-            <Label text={`Permanently delete all ${bulkDeletion.logins.length} accounts with prefixes: ${bulkDeletion.prefixes.map(prefixLabel).join(', ')}? Their Linux accounts, home directories, database resources, portal accounts, and submissions will be deleted. This cannot be undone.`} />
+            <Label text={`Permanently delete all ${bulkDeletion.logins.length} ready accounts with prefixes: ${bulkDeletion.prefixes.map(prefixLabel).join(', ')}? Their Linux accounts, home directories, database resources, portal accounts, and submissions will be deleted. This cannot be undone.`} />
             <Flex direction="column" gap="xs" maxHeight="240px" overflowY="auto">
               {bulkDeletion.logins.map(login => <Label key={login} text={login} className={monoStyles} />)}
             </Flex>

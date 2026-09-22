@@ -17,6 +17,7 @@ export async function createDbConnection(connectionString: string) {
 
   const mongoDb = client.db('portal');
   const users = mongoDb.collection<User>('users');
+  await users.updateMany({ created: { $exists: false } }, { $set: { created: true } });
   const datasets = mongoDb.collection<Dataset>('datasets');
 
   const referenceCache = mongoDb.collection<ReferenceCacheEntry>('referenceCache');

@@ -104,3 +104,43 @@ login on stdin, including when deleting an account from an earlier year.
 Rebuild the portal after installing the helpers. No accounts are deleted during
 installation. The provisioning script takes its existing global lock and can
 leave partially completed removals on failure; check host logs before retrying.
+
+## Account creation from the Users page
+
+The plus button accepts multiple name/password rows and a TXT file containing
+`name:password` lines (blank lines and `#` comments are ignored). Short names gain
+the current `fYY_` prefix; full student logins retain their prefix. The API validates
+the whole batch and creates the portal records with `created: false` before queuing
+host provisioning. It marks each record `created: true` and saves its Redis port
+only after that account succeeds. Existing records are migrated to `created: true`.
+
+While pending, rows are green and account buttons are disabled; the list polls for
+completion. Failed accounts retain an error. Retry through the plus popup with the
+same login and password. Passwords remain in memory only and travel over SSH stdin;
+they are never saved in portal records. Restarting the API interrupts its queue;
+unfinished accounts can be retried with the same password. Pending accounts cannot
+log in, and bulk deletion excludes them.
+
+As `yuliia`, apply the provisioning update after the deletion update above:
+
+```sh
+python3 server/scripts/host/update-user-creation.py
+install -m 755 server/scripts/host/portal-ssh-command ~/infra/bin/portal-ssh-command
+```
+
+This removes portal creation from `users.bash`, its CRUD helper, and `mongo-admin`;
+the host now creates only infrastructure. Both create and remove wait for the same
+provisioning lock. The updater keeps `.before-portal-creation` backups and is
+idempotent. Once applied, do not rerun the older deletion updater.
+
+As root, install the new forced-command helper and sudo rule:
+
+```sh
+install -o root -g root -m 755 server/scripts/host/portal-create-user /usr/local/libexec/portal-create-user
+install -o root -g root -m 440 server/scripts/host/portal-create-user.sudoers /etc/sudoers.d/portal-create-user
+visudo -c
+```
+
+Creation uses the same root-owned `/etc/portal-delete-user.env` credentials and
+SSH key as deletion. The helper accepts one validated full login, one password
+line on stdin, and returns the assigned Redis port after successful provisioning.

@@ -1,3 +1,4 @@
+import { isUserCreationPending } from './user-creation';
 import { ObjectId } from 'mongodb';
 import type { WithId } from 'mongodb';
 
@@ -21,6 +22,8 @@ export type User = {
   testSession: TestSession | null;
   submissions: Submission[];
   admin: boolean;
+  created?: boolean;
+  creationError?: string;
 };
 
 export type TestSession = {
@@ -48,7 +51,7 @@ export async function getUser(args: GetUserArgs) {
   const { database, userId } = args;
 
   try {
-    return await database.users.findOne({ _id: new ObjectId(userId) }, { projection: { password: 0 } });
+    return await database.users.findOne({ _id: new ObjectId(userId), created: { $ne: false } }, { projection: { password: 0 } });
   } catch {
     return null;
   }
@@ -58,6 +61,8 @@ export async function getUser(args: GetUserArgs) {
 export type UserInfo = {
   user: string;
   admin: boolean;
+  created: boolean;
+  creationError: string | null;
   /**
    * `port` is null for legacy records that were never assigned a Redis instance. Everything
    * else a student owns (sandbox MongoDB database, PostgreSQL database, Cassandra keyspace) is
@@ -84,7 +89,11 @@ export async function listUsers({ database }: ListUsersArgs): Promise<ServiceRes
     data: users.map(user => ({
       user: user.user,
       admin: user.admin ?? false,
-      redis: { port: user.port ?? null },
+      created: user.created !== false,
+      creationError: user.created === false
+        ? user.creationError ?? (isUserCreationPending(user.user) ? null : 'Creation interrupted. Add this login again with the same password to retry.')
+        : null,
+      redis: { port: user.port || null },
       submissions: (user.submissions ?? []).map(({ datasetId, grade }) => ({ datasetId, grade })),
       testSession: user.testSession
         ? {

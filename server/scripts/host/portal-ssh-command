@@ -2,12 +2,15 @@
 # Forced command for the portal's SSH key (see README.md in this directory).
 #
 # The portal connects as the infrastructure user with a key whose authorized_keys entry pins
-# this script. It supports password expiry and deletion of one student account.
+# this script. It supports password expiry, creation, and deletion of one student account.
 set -euo pipefail
 
 login=${SSH_ORIGINAL_COMMAND:-}
 action=expire
-if [[ $login == 'delete '* ]]; then
+if [[ $login == 'create '* ]]; then
+  action=create
+  login=${login#create }
+elif [[ $login == 'delete '* ]]; then
   action=delete
   login=${login#delete }
 fi
@@ -16,6 +19,9 @@ if [[ ! $login =~ ^f[0-9]{2}_[a-z0-9_]{1,43}$ ]]; then
   exit 2
 fi
 
+if [[ $action == create ]]; then
+  exec sudo -n /usr/local/libexec/portal-create-user "$login"
+fi
 if [[ $action == delete ]]; then
   exec sudo -n /usr/local/libexec/portal-delete-user "$login"
 fi

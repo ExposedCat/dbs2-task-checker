@@ -11,7 +11,7 @@ export const LoginRoute = new Elysia({ name: 'Route.Login' })
   .onStart(({ decorator: { database } }) => {
     if (!socketPath) return;
     approvalServer = startLoginApprovalSocket(socketPath, async login => {
-      const user = await database.users.findOne({ user: login }, { projection: { _id: 1 } });
+      const user = await database.users.findOne({ user: login, created: { $ne: false } }, { projection: { _id: 1 } });
       return user?._id.toString() ?? null;
     });
   })

@@ -10,6 +10,7 @@ import { DatasetsRoute } from './routes/datasets.get.js';
 import { DeleteDatasetRoute } from './routes/delete-dataset.post.js';
 import { LoginRoute } from './routes/login.post.js';
 import { QueryRoute } from './routes/query.post.js';
+import { CreateUsersRoute } from './routes/create-users.post.js';
 import { DeleteUserRoute } from './routes/delete-user.post.js';
 import { ResetPasswordRoute } from './routes/reset-password.post.js';
 import { ServicesRoute } from './routes/services.get.js';
@@ -34,6 +35,7 @@ const app = new Elysia({ serve: { maxRequestBodySize: 1024 * 1024, idleTimeout: 
   .use(UsersRoute)
   .use(ResetPasswordRoute)
   .use(DeleteUserRoute)
+  .use(CreateUsersRoute)
   .use(ServicesRoute)
   .use(RequireErrorFallback)
   .use(DeleteDatasetRoute)

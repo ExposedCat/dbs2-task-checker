@@ -36,8 +36,9 @@ browser ──:80/443──> web (Caddy)
 The databases already run there as rootless containers of `yuliia` (`~/infra/README.md`):
 `yuliia-mongodb` holds both the `portal` database and the student sandboxes on host port
 42222, and every student has a `yuliia-redis-<login>` container on the port registered in
-`~/infra/redis/users.json`. Students are provisioned with `sudo ~/scripts/users/users.bash`,
-which also creates the portal user. The separate grading broker and private databases live in `~/infra/grading`.
+`~/infra/redis/users.json`. Students are created from the portal Users page (multiple rows or a TXT upload).
+The portal creates pending records first, then provisions infrastructure through
+`~/scripts/users/users.bash`; see [host setup](server/scripts/host/README.md). The separate grading broker and private databases live in `~/infra/grading`.
 Install them first using [the broker guide](server/scripts/grading/README.md).
 
 One-time, as root:
