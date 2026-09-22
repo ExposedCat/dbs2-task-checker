@@ -282,7 +282,7 @@ export function UsersPage() {
   const pending = React.useRef(new Set<string>());
   const deletionQueue = React.useRef<Promise<void>>(Promise.resolve());
   const deleteUser = (login: string) => {
-    if (pending.current.has(login)) return;
+    if (pending.current.has(login) || deletions[login]?.state === 'success') return;
     pending.current.add(login);
     setDeletions(current => ({ ...current, [login]: { state: 'loading' } }));
     // Keep every selected row busy immediately, but send one deletion at a time.
@@ -310,6 +310,8 @@ export function UsersPage() {
   const availablePrefixes = [...new Set(users.map(info => usernamePrefix(info.user)))].sort();
   const visibleUsers = users.filter(info => prefixes.includes(usernamePrefix(info.user)));
   const prefixLabel = (prefix: string) => prefix || 'No prefix';
+  const [bulkDeletion, setBulkDeletion] = React.useState<{ prefixes: string[]; logins: string[] } | null>(null);
+  const deletionInProgress = Object.values(deletions).some(deletion => deletion.state === 'loading');
 
   React.useEffect(() => {
     const outside = (event: PointerEvent) => {
@@ -366,7 +368,37 @@ export function UsersPage() {
             </div>
           )}
         </div>
+        <Button
+          icon={FaTrash}
+          variant="outline"
+          colorVariant="error"
+          title="Delete all users with selected prefixes"
+          aria-label="Delete all users with selected prefixes"
+          disabled={query.state !== 'success' || visibleUsers.length === 0 || deletionInProgress}
+          onClick={() => {
+            setPrefixMenuOpen(false);
+            setBulkDeletion({ prefixes: [...prefixes], logins: [...new Set(visibleUsers.map(info => info.user))] });
+          }}
+        />
       </Flex>
+      {bulkDeletion && (
+        <Popup title={`Delete ${bulkDeletion.logins.length} accounts?`} open onClose={() => setBulkDeletion(null)}>
+          <Flex direction="column" gap="sm" maxWidth="container.lg">
+            <Label text={`Permanently delete all ${bulkDeletion.logins.length} accounts with prefixes: ${bulkDeletion.prefixes.map(prefixLabel).join(', ')}? Their Linux accounts, home directories, database resources, portal accounts, and submissions will be deleted. This cannot be undone.`} />
+            <Flex direction="column" gap="xs" maxHeight="240px" overflowY="auto">
+              {bulkDeletion.logins.map(login => <Label key={login} text={login} className={monoStyles} />)}
+            </Flex>
+            <Flex gap="sm">
+              <Button label="Cancel" variant="outline" onClick={() => setBulkDeletion(null)} />
+              <Button label={`Delete ${bulkDeletion.logins.length} accounts`} colorVariant="error" onClick={() => {
+                const { logins } = bulkDeletion;
+                setBulkDeletion(null);
+                for (const login of logins) deleteUser(login);
+              }} />
+            </Flex>
+          </Flex>
+        </Popup>
+      )}
       {query.state === 'loading' && <Label text="Loading..." />}
       {query.state === 'error' && <ErrorCard error={query.error} />}
       {query.state === 'success' && users.length === 0 && <Label text="There are no users yet" />}
