@@ -4,6 +4,7 @@ import { httpRequest } from '~/services/http.js';
 import { Page } from '~/components/elements/Page.js';
 import { Label } from '~/components/elements/Label.js';
 import { Button } from '~/components/elements/Button.js';
+import { Card } from '~/components/elements/Card.js';
 
 type Challenge = { command: string; code: string; pollToken: string; expiresAt: number };
 type Poll = { status: 'pending' } | { status: 'approved'; token: string };
@@ -135,28 +136,38 @@ export function LoginPage() {
     <Page>
       <Label text="Welcome to the DBS2 Portal" kind="header" />
 
-      {challenge && (
-        <>
-          <Label text="Paste this command on a server via SSH:" />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, border: '1px solid currentColor', borderRadius: 8, maxWidth: '100%', flexWrap: 'wrap' }}>
-            <code style={{ userSelect: 'all', overflowWrap: 'anywhere', flex: '1 1 240px' }}>
-              {challenge.command} {challenge.code}
+      <ol style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 560, listStyle: 'none', margin: 0, padding: 0 }}>
+        <li style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Label text="1. Connect over SSH with your username" />
+          <Card>
+            <code style={{ userSelect: 'all', overflowWrap: 'anywhere' }}>
+              ssh YOUR_USERNAME@nosql.felk.cvut.cz
             </code>
-            <Button label={copied ? 'Copied!' : 'Copy'} onClick={copy} aria-label="Copy login command" />
-          </div>
-          {copyError && <Label role="status" text={copyError} />}
-          <span role="status" aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}>
-            {copied ? 'Command copied' : ''}
-          </span>
-          {!error && (
-            <Label
-              text={`Expires in ${Math.max(0, Math.ceil((challenge.expiresAt - now) / 1000))} seconds`}
-            />
+          </Card>
+        </li>
+        <li style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Label text="2. Paste this command into your SSH session" />
+          {challenge && (
+            <>
+              <Card direction="row" alignItems="center" gap="sm" flexWrap="wrap">
+                <code style={{ userSelect: 'all', overflowWrap: 'anywhere', flex: '1 1 240px' }}>
+                  {challenge.command} {challenge.code}
+                </code>
+                <Button label={copied ? 'Copied!' : 'Copy'} onClick={copy} aria-label="Copy login command" />
+              </Card>
+              {copyError && <Label role="status" text={copyError} />}
+              <span role="status" aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}>
+                {copied ? 'Command copied' : ''}
+              </span>
+              {!error && (
+                <Label text={`Expires in ${Math.max(0, Math.ceil((challenge.expiresAt - now) / 1000))} seconds`} />
+              )}
+            </>
           )}
-        </>
-      )}
+          {loading && <Label text="Generating code…" />}
+        </li>
+      </ol>
       {error && <Label role="alert" text={error} color="error" />}
-      {loading && <Label text="Generating code…" />}
     </Page>
   );
 }
