@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
-import { checkInfra } from './infra';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { checkInfra, probeGradingRedis } from './infra';
 import type { Database } from './database';
 
 test('reports every student, including missing ports, and distinguishes Redis reachability', async () => {
@@ -39,3 +42,26 @@ test('reports every student, including missing ports, and distinguishes Redis re
     closed.stop(true);
   }
 }, 10000);
+
+
+test('grading Redis requires PONG from its private socket and reports unavailable sockets', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'grading-probe-'));
+  const path = join(directory, 'redis.sock');
+  let reply = '+PONG\r\n';
+  const server = Bun.listen({ unix: path, socket: {
+    data(socket, data) {
+      expect(data.toString()).toBe('*1\r\n$4\r\nPING\r\n');
+      socket.end(reply);
+    },
+  } });
+  try {
+    expect((await probeGradingRedis(path)).ok).toBe(true);
+    reply = '-NOAUTH Authentication required\r\n';
+    expect((await probeGradingRedis(path)).ok).toBe(false);
+    expect((await probeGradingRedis(undefined)).ok).toBe(false);
+    expect((await probeGradingRedis(join(directory, 'missing.sock'))).ok).toBe(false);
+  } finally {
+    server.stop(true);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

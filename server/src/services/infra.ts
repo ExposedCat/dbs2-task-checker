@@ -1,4 +1,4 @@
-import { createConnection } from 'node:net';
+import { createConnection, type NetConnectOpts } from 'node:net';
 
 import type { Database } from './database';
 import type { ServiceResponse } from './response';
@@ -47,10 +47,11 @@ function timed<T>(check: () => Promise<T>): Promise<T & { latencyMs: number }> {
   return check().then(result => ({ ...result, latencyMs: Math.round(performance.now() - started) }));
 }
 
-/** Opens a TCP connection; optionally sends a payload and returns the first reply */
-function tcpProbe(host: string, port: number, payload?: string): Promise<string> {
+/** Opens a TCP or Unix socket; optionally sends a payload and reads one bounded RESP line. */
+function socketProbe(options: NetConnectOpts, payload?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host, port });
+    const socket = createConnection(options);
+    let reply = '';
     const fail = (error: Error) => {
       socket.destroy();
       reject(error);
@@ -66,9 +67,13 @@ function tcpProbe(host: string, port: number, payload?: string): Promise<string>
       socket.write(payload);
     });
     socket.once('end', () => fail(new Error('Connection closed without a response')));
-    socket.once('data', chunk => {
-      socket.end();
-      resolve(chunk.toString());
+    socket.on('data', chunk => {
+      reply += chunk.toString();
+      if (reply.length > 4096) return fail(new Error('Probe response exceeds limit'));
+      if (reply.includes('\r\n')) {
+        socket.destroy();
+        resolve(reply);
+      }
     });
   });
 }
@@ -76,7 +81,7 @@ function tcpProbe(host: string, port: number, payload?: string): Promise<string>
 async function probeTcp(host: string, port: number): Promise<ProbeResult> {
   try {
     return await timed(async () => {
-      await tcpProbe(host, port);
+      await socketProbe({ host, port });
       return { ok: true, detail: null };
     });
   } catch (error) {
@@ -100,8 +105,21 @@ async function probeHttp(url: string): Promise<ProbeResult> {
 async function probeRedis(host: string, port: number): Promise<ProbeResult> {
   try {
     return await timed(async () => {
-      const reply = await tcpProbe(host, port, '*1\r\n$4\r\nPING\r\n');
+      const reply = await socketProbe({ host, port }, '*1\r\n$4\r\nPING\r\n');
       const ok = reply.startsWith('+PONG') || reply.startsWith('-NOAUTH');
+      return { ok, detail: ok ? null : `Unexpected reply: ${reply.trim().slice(0, 60)}` };
+    });
+  } catch (error) {
+    return { ok: false, latencyMs: null, detail: String(error instanceof Error ? error.message : error) };
+  }
+}
+
+export async function probeGradingRedis(path: string | undefined): Promise<ProbeResult> {
+  if (!path) return { ok: false, latencyMs: null, detail: 'Grading Redis socket is not configured' };
+  try {
+    return await timed(async () => {
+      const reply = await socketProbe({ path }, '*1\r\n$4\r\nPING\r\n');
+      const ok = reply === '+PONG\r\n';
       return { ok, detail: ok ? null : `Unexpected reply: ${reply.trim().slice(0, 60)}` };
     });
   } catch (error) {
@@ -155,7 +173,7 @@ export async function checkInfra({ database }: CheckInfraArgs): Promise<ServiceR
     .find({ admin: { $ne: true } }, { projection: { user: 1, port: 1 }, sort: { user: 1 } })
     .toArray();
 
-  const [portal, sandbox, extra, redis] = await Promise.all([
+  const [portal, sandbox, extra, redis, gradingRedis] = await Promise.all([
     probePortalDatabase(database),
     probeTcp(MONGO_SANDBOX_HOST, MONGO_SANDBOX_PORT),
     Promise.all(
@@ -174,6 +192,7 @@ export async function checkInfra({ database }: CheckInfraArgs): Promise<ServiceR
         return { user, port, ...result, status: result.ok ? 'up' : 'down' };
       }),
     ),
+    probeGradingRedis(process.env.REDIS_GRADING_SOCKET),
   ]);
 
   return {
@@ -184,6 +203,7 @@ export async function checkInfra({ database }: CheckInfraArgs): Promise<ServiceR
       services: [
         { name: 'Portal MongoDB', target: 'portal database', ...portal },
         { name: 'Sandbox MongoDB', target: `${MONGO_SANDBOX_HOST}:${MONGO_SANDBOX_PORT}`, ...sandbox },
+        { name: 'Sandbox Redis', target: 'shared grading instance', ...gradingRedis },
         ...extra,
       ],
       redis,
