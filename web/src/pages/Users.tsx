@@ -279,6 +279,7 @@ export function UsersPage() {
         }}>
           <Button
             variant="outline"
+            style={{ lineHeight: 1 }}
             icon={prefixMenuOpen ? FaChevronUp : FaChevronDown}
             reverse
             label={`Prefixes · ${prefixes.length === 1 ? prefixLabel(prefixes[0]) : prefixes.length ? `${prefixes.length} selected` : 'None'}`}
