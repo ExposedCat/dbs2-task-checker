@@ -53,6 +53,24 @@ const tableStyles = css({
   },
 });
 
+const prefixMenuStyles = css({
+  position: 'absolute',
+  top: '100%',
+  right: 0,
+  marginTop: 'xs',
+  padding: 'sm',
+  border: 'base',
+  borderRadius: 'common',
+  backgroundColor: 'white',
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+  zIndex: 10,
+  minWidth: '180px',
+  maxHeight: '300px',
+  overflowY: 'auto',
+});
+const prefixSummaryStyles = css({ cursor: 'pointer', border: 'base', borderRadius: 'common', padding: 'sm' });
+const usernamePrefix = (name: string) => name.includes('_') ? name.slice(0, name.indexOf('_')) : '';
+
 const monoStyles = css({ fontFamily: 'mono' });
 
 // On narrow screens the table scrolls horizontally inside its box instead of widening the page
@@ -218,17 +236,58 @@ const UserRow: React.FC<{ info: UserInfo }> = ({ info }) => {
 
 export function UsersPage() {
   const query = useGetRequest<UserInfo[]>('/users');
+  const [prefixes, setPrefixes] = React.useState<string[]>(() => [`f${String(new Date().getFullYear()).slice(-2)}`]);
+  const dropdown = React.useRef<HTMLDetailsElement>(null);
+  const users = query.state === 'success' ? query.data : [];
+  const availablePrefixes = [...new Set(users.map(info => usernamePrefix(info.user)))].sort();
+  const visibleUsers = users.filter(info => prefixes.includes(usernamePrefix(info.user)));
+  const prefixLabel = (prefix: string) => prefix || 'No prefix';
+
+  React.useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (dropdown.current && !dropdown.current.contains(event.target as Node)) dropdown.current.open = false;
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, []);
 
   return (
     <Page>
-      <Flex align="center" gap="sm">
+      <Flex align="center" gap="sm" wrap="wrap">
         <Label text="Users" kind="header" />
-        <Button icon={FaSyncAlt} variant="outline" disabled={query.state === 'loading'} onClick={query.refetch} />
+        <Button icon={FaSyncAlt} variant="outline" disabled={query.state === 'loading'} onClick={query.refetch} title="Reload users" aria-label="Reload users" />
+        <details ref={dropdown} style={{ position: 'relative' }} onKeyDown={event => {
+          if (event.key === 'Escape' && dropdown.current) {
+            dropdown.current.open = false;
+            dropdown.current.querySelector('summary')?.focus();
+          }
+        }}>
+          <summary className={prefixSummaryStyles} aria-label="Filter users by prefix">
+            Prefixes: {prefixes.length ? prefixes.map(prefixLabel).join(', ') : 'None'}
+          </summary>
+          <div className={prefixMenuStyles}>
+            <Flex gap="xs">
+              <Button label="All" onClick={() => setPrefixes(availablePrefixes)} />
+              <Button label="None" onClick={() => setPrefixes([])} />
+            </Flex>
+            {availablePrefixes.map(prefix => (
+              <label key={prefix} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={prefixes.includes(prefix)} onChange={event => {
+                  setPrefixes(current => event.target.checked
+                    ? [...current, prefix].sort()
+                    : current.filter(value => value !== prefix));
+                }} />
+                {prefixLabel(prefix)}
+              </label>
+            ))}
+          </div>
+        </details>
       </Flex>
       {query.state === 'loading' && <Label text="Loading..." />}
       {query.state === 'error' && <ErrorCard error={query.error} />}
       {query.state === 'success' && query.data.length === 0 && <Label text="There are no users yet" />}
-      {query.state === 'success' && query.data.length > 0 && (
+      {query.state === 'success' && users.length > 0 && visibleUsers.length === 0 && <Label text="No users match the selected prefixes" />}
+      {query.state === 'success' && visibleUsers.length > 0 && (
         <Flex maxWidth="container.full" direction="column" align="center" className={scrollStyles}>
           <table className={tableStyles}>
             <thead>
@@ -242,7 +301,7 @@ export function UsersPage() {
             </thead>
             <tbody>
               {/* Logins are not unique in the collection (legacy duplicate records), hence the index */}
-              {query.data.map((info, index) => (
+              {visibleUsers.map((info, index) => (
                 <UserRow key={`${index}-${info.user}`} info={info} />
               ))}
             </tbody>
