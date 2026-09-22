@@ -1,6 +1,6 @@
 import { css } from '@styled-system/css/css.mjs';
 import React from 'react';
-import { FaSyncAlt } from 'react-icons/fa';
+import { FaChevronDown, FaChevronUp, FaSyncAlt } from 'react-icons/fa';
 import { Badge } from '~/components/elements/Badge';
 import { Button } from '~/components/elements/Button';
 import { Flex } from '~/components/elements/Flex';
@@ -19,7 +19,7 @@ type ProbeResult = {
 export type InfraReport = {
   checkedAt: number;
   services: (ProbeResult & { name: string; target: string })[];
-  redis: (ProbeResult & { user: string; port: number })[];
+  redis: (ProbeResult & { user: string; port: number | null; status: 'up' | 'down' | 'unconfigured' })[];
 };
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -40,7 +40,7 @@ const tableStyles = css({
   },
   '& td': {
     padding: 'sm',
-    verticalAlign: 'middle',
+    verticalAlign: 'top',
     borderTop: 'base',
     borderBottom: 'base',
   },
@@ -58,27 +58,17 @@ const tableStyles = css({
 
 const monoStyles = css({ fontFamily: 'mono' });
 
-const upBadgeStyles = css({
-  backgroundColor: 'light.success',
-  borderColor: 'decoration.success',
-  color: 'text.success',
-});
-
-const downBadgeStyles = css({
-  backgroundColor: 'light.error',
-  borderColor: 'decoration.error',
-  color: 'text.error',
-});
-
 const StatusBadge: React.FC<{ ok: boolean; latencyMs: number | null }> = ({ ok, latencyMs }) => (
   <Badge
     text={ok ? `up${latencyMs !== null ? ` · ${latencyMs} ms` : ''}` : 'down'}
-    className={ok ? upBadgeStyles : downBadgeStyles}
+    tone={ok ? 'success' : 'error'}
   />
 );
 
 export function ServicesPage() {
   const query = useGetRequest<InfraReport>('/services');
+  const [redisExpanded, setRedisExpanded] = React.useState(false);
+  const redisDetailsId = React.useId();
 
   // The checks are cheap and credential-free, so keep the page current while it is open
   React.useEffect(() => {
@@ -88,8 +78,9 @@ export function ServicesPage() {
 
   const redisSummary = React.useMemo(() => {
     if (!query.data) return null;
-    const down = query.data.redis.filter(instance => !instance.ok);
-    return { total: query.data.redis.length, down };
+    const up = query.data.redis.filter(instance => instance.ok).length;
+    const unconfigured = query.data.redis.filter(instance => instance.status === 'unconfigured').length;
+    return { total: query.data.redis.length, up, down: query.data.redis.length - up - unconfigured, unconfigured };
   }, [query.data]);
 
   return (
@@ -136,31 +127,38 @@ export function ServicesPage() {
                   <Label text={`${redisSummary.total} students`} className={monoStyles} />
                 </td>
                 <td>
-                  <Badge
-                    text={
-                      redisSummary.down.length === 0
-                        ? `all ${redisSummary.total} up`
-                        : `${redisSummary.total - redisSummary.down.length} up · ${redisSummary.down.length} down`
-                    }
-                    className={redisSummary.down.length === 0 ? upBadgeStyles : downBadgeStyles}
-                  />
+                  <StatusBadge ok={redisSummary.total > 0 && redisSummary.up === redisSummary.total} latencyMs={null} />
                 </td>
                 <td>
-                  {redisSummary.down.length === 0 ? (
-                    <Label text="—" />
-                  ) : (
-                    <Flex gap="xs" wrap="wrap" maxWidth="container.lg">
-                      {redisSummary.down.map(instance => (
-                        <Badge
-                          key={instance.user}
-                          preserveCase
-                          text={`${instance.user} :${instance.port}`}
-                          className={downBadgeStyles}
-                          title={instance.detail ?? undefined}
-                        />
-                      ))}
-                    </Flex>
-                  )}
+                  <Flex direction="column" align="start" gap="sm" maxWidth="container.lg">
+                    <Button
+                      variant="outline"
+                      style={{ lineHeight: 1 }}
+                      icon={redisExpanded ? FaChevronUp : FaChevronDown}
+                      reverse
+                      label={`${redisSummary.up} up · ${redisSummary.down} down${redisSummary.unconfigured ? ` · ${redisSummary.unconfigured} unconfigured` : ''}`}
+                      aria-label="Toggle student Redis details"
+                      aria-expanded={redisExpanded}
+                      aria-controls={redisDetailsId}
+                      onClick={() => setRedisExpanded(expanded => !expanded)}
+                    />
+                    {redisExpanded && (
+                      <Flex id={redisDetailsId} direction="column" gap="sm">
+                        <Label text="Green: reachable · Yellow: no port assigned · Red: unavailable" />
+                        <Flex gap="xs" wrap="wrap">
+                          {query.data.redis.map((instance, index) => (
+                            <Badge
+                              key={`${instance.user}-${index}`}
+                              preserveCase
+                              text={instance.user}
+                              tone={instance.ok ? 'success' : instance.status === 'unconfigured' ? 'warning' : 'error'}
+                              title={`${instance.user}${instance.port ? ` :${instance.port}` : ''} — ${instance.ok ? 'UP' : instance.status === 'unconfigured' ? 'No Redis port assigned' : 'DOWN'}${instance.detail ? `: ${instance.detail}` : ''}`}
+                            />
+                          ))}
+                        </Flex>
+                      </Flex>
+                    )}
+                  </Flex>
                 </td>
               </tr>
             </tbody>

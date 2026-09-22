@@ -32,7 +32,8 @@ export type ServiceStatus = ProbeResult & {
 
 export type RedisInstanceStatus = ProbeResult & {
   user: string;
-  port: number;
+  port: number | null;
+  status: 'up' | 'down' | 'unconfigured';
 };
 
 export type InfraReport = {
@@ -64,6 +65,7 @@ function tcpProbe(host: string, port: number, payload?: string): Promise<string>
       }
       socket.write(payload);
     });
+    socket.once('end', () => fail(new Error('Connection closed without a response')));
     socket.once('data', chunk => {
       socket.end();
       resolve(chunk.toString());
@@ -149,8 +151,8 @@ export type CheckInfraArgs = {
 
 export async function checkInfra({ database }: CheckInfraArgs): Promise<ServiceResponse<InfraReport>> {
   const users = await database.users
-    // `$gt: 0` also skips legacy records without a port (comparison only matches numbers)
-    .find({ port: { $gt: 0 } }, { projection: { user: 1, port: 1 }, sort: { user: 1 } })
+    // Include every student, including accounts without an assigned Redis instance.
+    .find({ admin: { $ne: true } }, { projection: { user: 1, port: 1 }, sort: { user: 1 } })
     .toArray();
 
   const [portal, sandbox, extra, redis] = await Promise.all([
@@ -164,11 +166,13 @@ export async function checkInfra({ database }: CheckInfraArgs): Promise<ServiceR
       })),
     ),
     Promise.all(
-      users.map(async ({ user, port }) => ({
-        user,
-        port,
-        ...(await probeRedis(REDIS_SANDBOX_HOST, port)),
-      })),
+      users.map(async ({ user, port }): Promise<RedisInstanceStatus> => {
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          return { user, port: null, status: 'unconfigured', ok: false, latencyMs: null, detail: 'No valid Redis port assigned' };
+        }
+        const result = await probeRedis(REDIS_SANDBOX_HOST, port);
+        return { user, port, ...result, status: result.ok ? 'up' : 'down' };
+      }),
     ),
   ]);
 
