@@ -1,6 +1,6 @@
 import { css } from '@styled-system/css/css.mjs';
 import React from 'react';
-import { FaCheck, FaChevronDown, FaChevronUp, FaKey, FaSyncAlt, FaTerminal } from 'react-icons/fa';
+import { FaCheck, FaChevronDown, FaChevronUp, FaKey, FaSyncAlt, FaTerminal, FaTrash } from 'react-icons/fa';
 import { Badge } from '~/components/elements/Badge';
 import { Button } from '~/components/elements/Button';
 import { Flex } from '~/components/elements/Flex';
@@ -10,6 +10,8 @@ import { Popup } from '~/components/elements/Popup';
 import { ErrorCard } from '~/components/partials/ErrorCard';
 import { useGetRequest } from '~/hooks/useGetRequest';
 import { usePostRequest } from '~/hooks/usePostRequest';
+import { useSessionToken } from '~/hooks/useSessionToken';
+import { httpRequest } from '~/services/http';
 
 /** Mirrors `UserInfo` on the server: infrastructure details and progress, never the password */
 export type UserInfo = {
@@ -26,6 +28,7 @@ const tableStyles = css({
   borderCollapse: 'separate',
   borderSpacing: '0 {spacing.sm}',
   fontSize: 'sm',
+  '& tr[data-deleting=true] td, & tr[data-deleting=true] td *': { color: 'text.error' },
   '& th': {
     paddingX: 'sm',
     textAlign: 'left',
@@ -125,7 +128,7 @@ async function copyToClipboard(text: string) {
 }
 
 /** Copies the command to open a shell as the student on the host */
-const CopyLoginButton: React.FC<{ login: string }> = ({ login }) => {
+const CopyLoginButton: React.FC<{ login: string; disabled?: boolean }> = ({ login, disabled }) => {
   const [copied, setCopied] = React.useState(false);
   const command = `sudo su - ${login}`;
 
@@ -141,6 +144,7 @@ const CopyLoginButton: React.FC<{ login: string }> = ({ login }) => {
 
   return (
     <Button
+      disabled={disabled}
       icon={copied ? FaCheck : FaTerminal}
       variant="outline"
       colorVariant={copied ? 'success' : 'active'}
@@ -179,15 +183,16 @@ const ResetPasswordDialog: React.FC<{ login: string; onClose: () => void }> = ({
   );
 };
 
-const ResetPasswordButton: React.FC<{ login: string }> = ({ login }) => {
+const ResetPasswordButton: React.FC<{ login: string; disabled?: boolean }> = ({ login, disabled }) => {
   const [attempt, setAttempt] = React.useState(0);
   const [open, setOpen] = React.useState(false);
   const onClose = React.useCallback(() => setOpen(false), []);
 
   return (
     <>
-      {open && <ResetPasswordDialog key={attempt} login={login} onClose={onClose} />}
+      {open && !disabled && <ResetPasswordDialog key={attempt} login={login} onClose={onClose} />}
       <Button
+        disabled={disabled}
         icon={FaKey}
         variant="outline"
         colorVariant="warning"
@@ -201,11 +206,16 @@ const ResetPasswordButton: React.FC<{ login: string }> = ({ login }) => {
   );
 };
 
-const UserRow: React.FC<{ info: UserInfo }> = ({ info }) => {
+type DeletionState = { state: 'loading' | 'success' | 'error'; error?: string };
+
+const UserRow: React.FC<{ info: UserInfo; deletion?: DeletionState; onDelete: (login: string) => void }> = ({ info, deletion, onDelete }) => {
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const deleting = deletion?.state === 'loading';
+  const disabled = deleting || deletion?.state === 'success';
   const submissions = React.useMemo(() => summarizeSubmissions(info.submissions), [info.submissions]);
 
   return (
-    <tr>
+    <tr data-deleting={deleting} aria-busy={deleting}>
       <td>
         <Flex align="center" gap="xs">
           <Label text={info.user} className={monoStyles} />
@@ -239,9 +249,27 @@ const UserRow: React.FC<{ info: UserInfo }> = ({ info }) => {
       </td>
       <td>
         <Flex gap="xs">
-          <CopyLoginButton login={info.user} />
-          <ResetPasswordButton login={info.user} />
+          <CopyLoginButton login={info.user} disabled={disabled} />
+          <ResetPasswordButton login={info.user} disabled={disabled} />
+          <Button icon={FaTrash} label={deleting ? 'Deleting…' : deletion?.state === 'success' ? 'Deleted' : 'Delete'}
+            variant="outline" colorVariant="error" disabled={disabled}
+            title={`Delete account ${info.user}`} onClick={() => setConfirmOpen(true)} />
         </Flex>
+        {deletion?.state === 'error' && <ErrorCard error={deletion.error} />}
+        {confirmOpen && (
+          <Popup title={`Delete ${info.user}?`} open onClose={() => setConfirmOpen(false)}>
+            <Flex direction="column" gap="sm" maxWidth="container.lg">
+              <Label text={`Permanently delete ${info.user}'s Linux account, home directory, and database resources? Portal records and submissions will be preserved. This cannot be undone.`} />
+              <Flex gap="sm">
+                <Button label="Cancel" variant="outline" onClick={() => setConfirmOpen(false)} />
+                <Button label={`Delete ${info.user}`} colorVariant="error" onClick={() => {
+                  setConfirmOpen(false);
+                  onDelete(info.user);
+                }} />
+              </Flex>
+            </Flex>
+          </Popup>
+        )}
       </td>
     </tr>
   );
@@ -249,6 +277,21 @@ const UserRow: React.FC<{ info: UserInfo }> = ({ info }) => {
 
 export function UsersPage() {
   const query = useGetRequest<UserInfo[]>('/users');
+  const token = useSessionToken();
+  const [deletions, setDeletions] = React.useState<Record<string, DeletionState>>({});
+  const pending = React.useRef(new Set<string>());
+  const deleteUser = async (login: string) => {
+    if (pending.current.has(login)) return;
+    pending.current.add(login);
+    setDeletions(current => ({ ...current, [login]: { state: 'loading' } }));
+    const result = await httpRequest<{ message: string }>({
+      method: 'POST', path: '/delete-user', authorization: token, contentType: 'json', body: { user: login },
+    });
+    pending.current.delete(login);
+    setDeletions(current => ({ ...current, [login]: result.ok
+      ? { state: 'success' } : { state: 'error', error: result.error } }));
+    if (result.ok) query.refetch();
+  };
   const [prefixes, setPrefixes] = React.useState<string[]>(() => [`f${String(new Date().getFullYear()).slice(-2)}`]);
   const dropdown = React.useRef<HTMLDivElement>(null);
   const [prefixMenuOpen, setPrefixMenuOpen] = React.useState(false);
@@ -327,13 +370,13 @@ export function UsersPage() {
                 <th>Redis port</th>
                 <th>Active test</th>
                 <th>Submissions (best grade)</th>
-                <th title="Copy the shell login command · reset the Linux password">Account</th>
+                <th title="Copy the shell login command · reset the Linux password · delete account">Account</th>
               </tr>
             </thead>
             <tbody>
               {/* Logins are not unique in the collection (legacy duplicate records), hence the index */}
               {visibleUsers.map((info, index) => (
-                <UserRow key={`${index}-${info.user}`} info={info} />
+                <UserRow key={`${index}-${info.user}`} info={info} deletion={deletions[info.user]} onDelete={deleteUser} />
               ))}
             </tbody>
           </table>

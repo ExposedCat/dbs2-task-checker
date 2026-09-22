@@ -1,0 +1,1 @@
+yuliia ALL=(root) NOPASSWD: /usr/local/libexec/portal-delete-user

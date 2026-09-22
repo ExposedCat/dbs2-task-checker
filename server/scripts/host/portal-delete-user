@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Install root-owned; credentials stay on the host, never in API requests.
+set -euo pipefail
+login=${1:-}
+[[ $# == 1 && $login =~ ^f[0-9]{2}_[a-z0-9_]{1,43}$ ]] || { echo 'Invalid student login' >&2; exit 2; }
+credentials=/etc/portal-delete-user.env
+[[ -f $credentials && $(stat -c '%u:%a' "$credentials") == 0:600 ]] || {
+  echo 'Deletion requires root-owned /etc/portal-delete-user.env with mode 600' >&2
+  exit 3
+}
+set -a
+source "$credentials"
+set +a
+# Fail before provisioning if a missing credential would trigger a TTY prompt.
+if [[ -f /home/yuliia/infra/.postgresql-admin-unified && -f /home/yuliia/infra/.cassandra-admin-unified ]]; then
+  : "${ADMIN_PASSWORD:?Missing shared administrator password}"
+else
+  : "${POSTGRES_ADMIN_PASSWORD:?Missing PostgreSQL password}"
+  : "${MONGO_ADMIN_PASSWORD:?Missing MongoDB password}"
+  : "${CASSANDRA_ADMIN_PASSWORD:?Missing Cassandra password}"
+  : "${NEO4J_ADMIN_PASSWORD:?Missing Neo4j password}"
+fi
+# Full login is essential: otherwise the script prepends the current year's prefix.
+export USERS_FULL_NAMES=1
+printf '%s\n' "$login" | /home/yuliia/scripts/users/users.bash remove -
