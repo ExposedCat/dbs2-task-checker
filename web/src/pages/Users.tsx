@@ -1,6 +1,6 @@
 import { css } from '@styled-system/css/css.mjs';
 import React from 'react';
-import { FaCheck, FaKey, FaSyncAlt, FaTerminal } from 'react-icons/fa';
+import { FaCheck, FaChevronDown, FaChevronUp, FaKey, FaSyncAlt, FaTerminal } from 'react-icons/fa';
 import { Badge } from '~/components/elements/Badge';
 import { Button } from '~/components/elements/Button';
 import { Flex } from '~/components/elements/Flex';
@@ -64,11 +64,24 @@ const prefixMenuStyles = css({
   backgroundColor: 'white',
   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
   zIndex: 10,
-  minWidth: '180px',
+  width: '240px',
+  maxWidth: 'calc(100vw - 32px)',
   maxHeight: '300px',
   overflowY: 'auto',
 });
-const prefixSummaryStyles = css({ cursor: 'pointer', border: 'base', borderRadius: 'common', padding: 'sm' });
+const prefixOptionStyles = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'sm',
+  padding: 'sm',
+  borderRadius: 'common',
+  cursor: 'pointer',
+  fontSize: 'sm',
+  _hover: { backgroundColor: 'light.gray' },
+  '&[data-selected=true]': { backgroundColor: 'light.active', color: 'text.active' },
+  _focusWithin: { outline: '2px solid token(colors.decoration.active)', outlineOffset: '1px' },
+  '& input': { width: '16px', height: '16px', accentColor: 'dark.active', cursor: 'pointer' },
+});
 const usernamePrefix = (name: string) => name.includes('_') ? name.slice(0, name.indexOf('_')) : '';
 
 const monoStyles = css({ fontFamily: 'mono' });
@@ -237,7 +250,9 @@ const UserRow: React.FC<{ info: UserInfo }> = ({ info }) => {
 export function UsersPage() {
   const query = useGetRequest<UserInfo[]>('/users');
   const [prefixes, setPrefixes] = React.useState<string[]>(() => [`f${String(new Date().getFullYear()).slice(-2)}`]);
-  const dropdown = React.useRef<HTMLDetailsElement>(null);
+  const dropdown = React.useRef<HTMLDivElement>(null);
+  const [prefixMenuOpen, setPrefixMenuOpen] = React.useState(false);
+  const prefixMenuId = React.useId();
   const users = query.state === 'success' ? query.data : [];
   const availablePrefixes = [...new Set(users.map(info => usernamePrefix(info.user)))].sort();
   const visibleUsers = users.filter(info => prefixes.includes(usernamePrefix(info.user)));
@@ -245,7 +260,7 @@ export function UsersPage() {
 
   React.useEffect(() => {
     const outside = (event: PointerEvent) => {
-      if (dropdown.current && !dropdown.current.contains(event.target as Node)) dropdown.current.open = false;
+      if (dropdown.current && !dropdown.current.contains(event.target as Node)) setPrefixMenuOpen(false);
     };
     document.addEventListener('pointerdown', outside);
     return () => document.removeEventListener('pointerdown', outside);
@@ -256,32 +271,47 @@ export function UsersPage() {
       <Flex align="center" gap="sm" wrap="wrap">
         <Label text="Users" kind="header" />
         <Button icon={FaSyncAlt} variant="outline" disabled={query.state === 'loading'} onClick={query.refetch} title="Reload users" aria-label="Reload users" />
-        <details ref={dropdown} style={{ position: 'relative' }} onKeyDown={event => {
-          if (event.key === 'Escape' && dropdown.current) {
-            dropdown.current.open = false;
-            dropdown.current.querySelector('summary')?.focus();
+        <div ref={dropdown} style={{ position: 'relative' }} onKeyDown={event => {
+          if (event.key === 'Escape') {
+            setPrefixMenuOpen(false);
+            dropdown.current?.querySelector('button')?.focus();
           }
         }}>
-          <summary className={prefixSummaryStyles} aria-label="Filter users by prefix">
-            Prefixes: {prefixes.length ? prefixes.map(prefixLabel).join(', ') : 'None'}
-          </summary>
-          <div className={prefixMenuStyles}>
-            <Flex gap="xs">
-              <Button label="All" onClick={() => setPrefixes(availablePrefixes)} />
-              <Button label="None" onClick={() => setPrefixes([])} />
-            </Flex>
-            {availablePrefixes.map(prefix => (
-              <label key={prefix} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, cursor: 'pointer' }}>
-                <input type="checkbox" checked={prefixes.includes(prefix)} onChange={event => {
-                  setPrefixes(current => event.target.checked
-                    ? [...current, prefix].sort()
-                    : current.filter(value => value !== prefix));
-                }} />
-                {prefixLabel(prefix)}
-              </label>
-            ))}
-          </div>
-        </details>
+          <Button
+            variant="outline"
+            icon={prefixMenuOpen ? FaChevronUp : FaChevronDown}
+            reverse
+            label={`Prefixes · ${prefixes.length === 1 ? prefixLabel(prefixes[0]) : prefixes.length ? `${prefixes.length} selected` : 'None'}`}
+            aria-label="Filter users by prefix"
+            aria-expanded={prefixMenuOpen}
+            aria-controls={prefixMenuId}
+            onClick={() => setPrefixMenuOpen(open => !open)}
+          />
+          {prefixMenuOpen && (
+            <div id={prefixMenuId} className={prefixMenuStyles} role="group" aria-label="Username prefixes">
+              <Flex justify="space-between" align="center" gap="xs" marginBottom="xs" paddingBottom="xs" borderBottom="base">
+                <Label text="Prefixes" />
+                <Flex gap="xs">
+                  <Button variant="ghost" label="All" onClick={() => setPrefixes(availablePrefixes)} />
+                  <Button variant="ghost" label="None" onClick={() => setPrefixes([])} />
+                </Flex>
+              </Flex>
+              <Flex direction="column" gap="xs">
+                {availablePrefixes.map(prefix => (
+                  <label key={prefix} className={prefixOptionStyles} data-selected={prefixes.includes(prefix)}>
+                    <input type="checkbox" checked={prefixes.includes(prefix)} onChange={event => {
+                      const checked = event.target.checked;
+                      setPrefixes(current => checked
+                        ? [...current, prefix].sort()
+                        : current.filter(value => value !== prefix));
+                    }} />
+                    {prefixLabel(prefix)}
+                  </label>
+                ))}
+              </Flex>
+            </div>
+          )}
+        </div>
       </Flex>
       {query.state === 'loading' && <Label text="Loading..." />}
       {query.state === 'error' && <ErrorCard error={query.error} />}
