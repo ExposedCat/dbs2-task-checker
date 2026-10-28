@@ -1,3 +1,7 @@
+import { prepareRedisCommand } from './redis-command';
+import { redisSnapshot, normalizeStreamReply } from './redis-state';
+import { redisComparisonReply } from './redis-results';
+import type { ComparisonReply } from '../comparison';
 import { ErrorReply, createClient } from 'redis';
 import { parseCommand } from '../escape.js';
 import type { BaseExecuteArgs, ExecuteResult } from './index.js';
@@ -7,7 +11,13 @@ import { gradingBroker } from './broker';
 const REDIS_GRADING_SOCKET = process.env.REDIS_GRADING_SOCKET;
 export type ExecuteRedisArgs = BaseExecuteArgs & { dataset: string[][] };
 
-export async function executeRedis({ queries, dataset, noReset = false }: ExecuteRedisArgs): Promise<ExecuteResult> {
+export async function executeRedis({
+  queries,
+  dataset,
+  noReset = false,
+  readOnly = false,
+  captureState = false,
+}: ExecuteRedisArgs): Promise<ExecuteResult> {
   if (!REDIS_GRADING_SOCKET) return { ok: false, data: null, error: 'Private Redis grading socket is not configured' };
   const client = createClient({
     socket: {
@@ -58,18 +68,52 @@ export async function executeRedis({ queries, dataset, noReset = false }: Execut
         },
       };
     }
+    const before = captureState
+      ? await redisSnapshot((args, buffered) => client.sendCommand(args, { returnBuffers: buffered }))
+      : undefined;
+    const startedAt = Date.now();
     let response = '';
+    const replies: ComparisonReply[] = [];
     let bytes = 0;
     for (const [index, query] of normalizedQueries.entries()) {
       if (expired) throw new Error('Execution time limit exceeded');
       commandIndex = index;
-      const result = await client.sendCommand(parseCommand(query));
+      const original = parseCommand(query);
+      const { command, count } = prepareRedisCommand(original, readOnly);
+      if (readOnly) {
+        // Let Redis classify module commands too. Unknown, transaction, connection,
+        // and scripting commands without the readonly flag are rejected conservatively.
+        const info = (await client.sendCommand(['COMMAND', 'INFO', command[0]])) as (unknown[] | null)[];
+        const flags = info[0]?.[2];
+        if (!Array.isArray(flags) || !flags.includes('readonly')) {
+          return {
+            ok: false,
+            data: null,
+            error: 'Verification query must be read-only',
+          };
+        }
+      }
+      const rawResult = await client.sendCommand(command);
+      const result = count && Array.isArray(rawResult) ? rawResult.length : rawResult;
+      replies.push(redisComparisonReply(original, before ? normalizeStreamReply(original, result, before) : result));
       const text = result !== undefined ? JSON.stringify(result, null, 1) : '<empty>';
       bytes += Buffer.byteLength(text) + 1;
       if (bytes > MAX_OUTPUT_BYTES) throw new Error('Execution output limit exceeded');
       response += `${text}\n`;
     }
-    return { ok: true, error: null, data: { response } };
+    const state = before
+      ? {
+          engine: 'redis' as const,
+          before,
+          startedAt,
+          after: await redisSnapshot((args, buffered) => client.sendCommand(args, { returnBuffers: buffered })),
+        }
+      : undefined;
+    return {
+      ok: true,
+      error: null,
+      data: { response, comparisonResponse: JSON.stringify(replies), ...(state ? { state } : {}) },
+    };
   };
   try {
     return await Promise.race([run(), deadline]);

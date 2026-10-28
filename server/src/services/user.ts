@@ -1,3 +1,9 @@
+import { stateChanges } from './state-comparison';
+import { compareTaskResults } from './grading';
+import { randomUUID } from 'node:crypto';
+import { parseReplies } from './comparison';
+import { hasPassed, validateTestPolicy } from './test-policy';
+import { validateTask } from './task-validation';
 import { isUserCreationPending } from './user-creation';
 import { ObjectId } from 'mongodb';
 import type { WithId } from 'mongodb';
@@ -13,6 +19,8 @@ import type { ServiceResponse } from './response';
 export type Submission = {
   datasetId: DatasetName;
   grade: number;
+  minPoints?: number;
+  passed?: boolean;
   session: TestSession['tasks'];
 };
 
@@ -27,8 +35,12 @@ export type User = {
 };
 
 export type TestSession = {
+  id: string;
+  minPoints: number;
   datasetId: DatasetName;
   tasks: {
+    id: string;
+    orderMatters?: boolean;
     kind: string;
     question: string;
     solution: string[];
@@ -51,7 +63,10 @@ export async function getUser(args: GetUserArgs) {
   const { database, userId } = args;
 
   try {
-    return await database.users.findOne({ _id: new ObjectId(userId), created: { $ne: false } }, { projection: { password: 0 } });
+    return await database.users.findOne(
+      { _id: new ObjectId(userId), created: { $ne: false } },
+      { projection: { password: 0 } },
+    );
   } catch {
     return null;
   }
@@ -90,9 +105,13 @@ export async function listUsers({ database }: ListUsersArgs): Promise<ServiceRes
       user: user.user,
       admin: user.admin ?? false,
       created: user.created !== false,
-      creationError: user.created === false
-        ? user.creationError ?? (isUserCreationPending(user.user) ? null : 'Creation interrupted. Add this login again with the same password to retry.')
-        : null,
+      creationError:
+        user.created === false
+          ? (user.creationError ??
+            (isUserCreationPending(user.user)
+              ? null
+              : 'Creation interrupted. Add this login again with the same password to retry.'))
+          : null,
       redis: { port: user.port || null },
       submissions: (user.submissions ?? []).map(({ datasetId, grade }) => ({ datasetId, grade })),
       testSession: user.testSession
@@ -110,43 +129,60 @@ export type QuitTestSessionArgs = {
   database: Database;
   user: WithId<User>;
   force?: boolean;
+  sessionId: string;
 };
+
+export type FinalTestResult = { result: number; wrong: string[]; passed: boolean; minPoints: number };
+export type TestProgressResult = { result: null } | FinalTestResult;
 
 export async function quitTestSession({
   database,
   user,
   force = false,
-}: QuitTestSessionArgs): Promise<ServiceResponse<{ grade: number | null; wrong: string[] }>> {
-  if (!user.testSession) {
-    return { ok: false, error: 'Test Session was not started', data: null };
+  sessionId,
+}: QuitTestSessionArgs): Promise<ServiceResponse<TestProgressResult>> {
+  const session = user.testSession;
+  if (!session || session.id !== sessionId) {
+    return { ok: false, error: 'Test session is stale or has ended', data: null };
   }
-
-  const grade =
-    force || user.testSession.tasks.at(-1)?.userSolution !== null
-      ? user.testSession.tasks.reduce((score, task) => score + Number(task.correct), 0)
-      : null;
-
-  const wrong = user.testSession.tasks.filter(task => !task.correct).map(task => task.question);
-
-  if (grade !== null) {
-    await database.users.updateOne(
-      { user: user.user },
-      {
-        $push: {
-          submissions: {
-            datasetId: user.testSession.datasetId,
-            grade,
-            session: user.testSession!.tasks,
-          },
-        },
-        $set: {
-          testSession: null,
+  if (!force && session.tasks.some(task => task.userSolution === null)) {
+    return { ok: true, error: null, data: { result: null } };
+  }
+  const grade = session.tasks.reduce((score, task) => score + Number(task.correct), 0);
+  const passed = grade >= session.minPoints;
+  const result = await database.users.updateOne(
+    { _id: user._id, 'testSession.id': sessionId, testSession: session },
+    {
+      $push: {
+        submissions: {
+          datasetId: session.datasetId,
+          grade,
+          passed,
+          minPoints: session.minPoints,
+          session: session.tasks,
         },
       },
-    );
-  }
-
-  return { ok: true, error: null, data: { grade, wrong } };
+      $set: { testSession: null },
+    },
+  );
+  if (!result.modifiedCount) return { ok: false, data: null, error: 'Test session changed; refresh and retry' };
+  return {
+    ok: true,
+    error: null,
+    data: {
+      result: grade,
+      passed,
+      minPoints: session.minPoints,
+      // Quit may end a test early: never reveal questions that were not displayed.
+      wrong: session.tasks
+        .filter(
+          (task, index) =>
+            !task.correct &&
+            (task.userSolution !== null || index === session.tasks.findIndex(item => item.userSolution === null)),
+        )
+        .map(task => task.question),
+    },
+  };
 }
 
 export type StartTestSessionArgs = {
@@ -161,6 +197,8 @@ export type StartTestSessionResponse =
   | {
       ok: true;
       data: {
+        sessionId: string;
+        taskId: string;
         firstQuestion: string;
         response: string;
       };
@@ -183,7 +221,7 @@ export async function startTestSession({
     return { ok: false, error: 'Test session is already started', data: null };
   }
 
-  if (user.submissions.some(submission => submission.datasetId === datasetId && submission.grade >= minPoints)) {
+  if (hasPassed(user.submissions, datasetId, minPoints)) {
     return {
       ok: false,
       error: 'Test for this dataset is already passed',
@@ -191,6 +229,10 @@ export async function startTestSession({
     };
   }
 
+  const dataset = await database.datasets.findOne({ id: datasetId });
+  if (!dataset) return { ok: false, data: null, error: 'Dataset not found' };
+  const policyError = validateTestPolicy({ ...dataset, kinds: cathegories, minPoints });
+  if (policyError) return { ok: false, data: null, error: policyError };
   const maxLimit = Math.max(...Object.values(cathegories));
 
   const groups = await database.datasets
@@ -234,8 +276,15 @@ export async function startTestSession({
     };
   }
 
+  if (minPoints > sessionBank.length) return { ok: false, data: null, error: 'Passing points are unreachable' };
+  for (const task of sessionBank) {
+    const error = validateTask(task);
+    if (error) return { ok: false, data: null, error: `Invalid task: ${error}` };
+  }
+  const sessionId = randomUUID();
   const tasks = sessionBank.map<TestSession['tasks'][number]>(item => ({
     ...item,
+    id: randomUUID(),
     userSolution: null,
     response: null,
     testResponse: null,
@@ -244,11 +293,13 @@ export async function startTestSession({
     correct: false,
   }));
 
-  await database.users.updateOne(
-    { _id: user._id },
+  const started = await database.users.updateOne(
+    { _id: user._id, testSession: null, submissions: user.submissions },
     {
       $set: {
         testSession: {
+          id: sessionId,
+          minPoints,
           datasetId,
           tasks,
         },
@@ -256,9 +307,13 @@ export async function startTestSession({
     },
   );
 
+  if (!started.modifiedCount) return { ok: false, data: null, error: 'Test session is already started' };
+
   return {
     ok: true,
     data: {
+      sessionId,
+      taskId: tasks[0].id,
       firstQuestion: tasks[0].question,
       response: `'${datasetId}' test session started`,
     },
@@ -268,21 +323,22 @@ export async function startTestSession({
 
 export type ExecuteQuestionArgs = BaseExecuteArgs & {
   database: Database;
-  user: User;
+  user: WithId<User>;
+  sessionId: string;
+  taskId: string;
 };
 
-export type ExecuteQuestionResult = ServiceResponse<{
-  result: number | null;
-  wrong: string[];
-}>;
+export type ExecuteQuestionResult = ServiceResponse<TestProgressResult>;
 
 export async function executeQuestion({
   database,
   user,
   queries,
+  sessionId,
+  taskId,
 }: ExecuteQuestionArgs): Promise<ExecuteQuestionResult> {
-  if (!user.testSession) {
-    return { ok: false, error: 'Test session is not started', data: null };
+  if (!user.testSession || user.testSession.id !== sessionId) {
+    return { ok: false, error: 'Test session is stale or has ended', data: null };
   }
 
   const { datasetId, tasks } = user.testSession;
@@ -295,6 +351,9 @@ export async function executeQuestion({
     };
   }
   const currentTask = tasks[currentTaskIndex];
+  if (currentTask.id !== taskId) return { ok: false, data: null, error: 'Task is stale or has already been answered' };
+  const taskError = validateTask(currentTask);
+  if (taskError) return { ok: false, data: null, error: `Invalid task: ${taskError}` };
 
   const normalizedQueries = queries.map(query => query.trim()).filter(query => query.length > 0);
 
@@ -320,7 +379,12 @@ export async function executeQuestion({
     userTestResponse: string | null;
   }): Promise<ExecuteQuestionResult> => {
     const newUser = await database.users.findOneAndUpdate(
-      { user: user.user },
+      {
+        _id: user._id,
+        'testSession.id': sessionId,
+        [`testSession.tasks.${currentTaskIndex}.id`]: taskId,
+        [`testSession.tasks.${currentTaskIndex}.userSolution`]: null,
+      },
       {
         $set: {
           [`testSession.tasks.${currentTaskIndex}.userSolution`]: userSolution,
@@ -336,21 +400,8 @@ export async function executeQuestion({
       },
     );
 
-    if (!newUser) return error500;
-
-    const quitResult = await quitTestSession({ database, user: newUser });
-    if (!quitResult.ok) {
-      return quitResult;
-    }
-
-    return {
-      ok: true,
-      data: {
-        result: quitResult.data.grade,
-        wrong: quitResult.data.wrong,
-      },
-      error: null,
-    };
+    if (!newUser) return { ok: false, data: null, error: 'Task is stale or has already been answered' };
+    return quitTestSession({ database, user: newUser, sessionId });
   };
 
   if (normalizedQueries.length === 0) {
@@ -364,9 +415,11 @@ export async function executeQuestion({
     });
   }
 
-  const getFinalResponse = async (response: string): Promise<ServiceResponse<{ response: string }>> => {
+  const getFinalResponse = async (data: { response: string; comparisonResponse?: string }): Promise<
+    ServiceResponse<{ response: string; comparisonResponse?: string }>
+  > => {
     if (!currentTask.test) {
-      return { ok: true, data: { response }, error: null };
+      return { ok: true, data, error: null };
     }
 
     const result = await execute({
@@ -398,19 +451,33 @@ export async function executeQuestion({
       datasetHash,
       solution: currentTask.solution,
       test: currentTask.test,
-      executorVersion: process.env.REFERENCE_CACHE_VERSION ?? 'executor-v1',
+      executorVersion: `automatic-state-v4:${process.env.REFERENCE_CACHE_VERSION ?? 'executor-v1'}`,
       scope: 'shared-private-grading-v1',
     },
     async () => {
-      const correctResult = await execute({ datasetId, queries: currentTask.solution });
+      const correctResult = await execute({
+        datasetId,
+        queries: currentTask.solution,
+        captureState: !currentTask.test,
+      });
       if (!correctResult.ok || correctResult.data.skipped) {
         throw new Error('Failed to execute reference solution. Please report to your teacher');
       }
-      const correctTest = await getFinalResponse(correctResult.data.response);
+      const correctTest = await getFinalResponse(correctResult.data);
       if (!correctTest.ok) throw new Error('Failed to verify reference solution. Please report to your teacher');
+      if (!currentTask.test && !correctResult.data.state) throw new Error('Reference database state missing');
+      if (currentTask.test || !Object.keys(stateChanges(correctResult.data.state!)).length)
+        parseReplies(correctTest.data.response);
       await assertDatasetUnchanged();
       return {
         response: correctResult.data.response.trim(),
+        ...(correctResult.data.state ? { state: correctResult.data.state } : {}),
+        ...(correctResult.data.comparisonResponse === undefined
+          ? {}
+          : { comparisonResponse: correctResult.data.comparisonResponse }),
+        ...(!currentTask.test || correctTest.data.comparisonResponse === undefined
+          ? {}
+          : { testComparisonResponse: correctTest.data.comparisonResponse }),
         testResponse: currentTask.test ? correctTest.data.response.trim() : null,
       };
     },
@@ -418,9 +485,9 @@ export async function executeQuestion({
 
   // Reference execution (on a miss) is complete before student code starts. This call
   // always resets/reloads, so reference mutations cannot leak into the submission.
-  const userResult = await execute({ datasetId, queries });
+  const userResult = await execute({ datasetId, queries, captureState: !currentTask.test });
   if (!userResult.ok) return userResult;
-  const userTest = await getFinalResponse(userResult.data.response);
+  const userTest = await getFinalResponse(userResult.data);
   if (!userTest.ok) return error500;
   await assertDatasetUnchanged();
 
@@ -428,7 +495,13 @@ export async function executeQuestion({
   const testResponse = reference.testResponse;
   const userResponse = userResult.data.response.trim();
   const userTestResponse = currentTask.test ? userTest.data.response.trim() : null;
-  const isCorrect = userTest.data.response.trim() === (testResponse ?? response);
+  const isCorrect = compareTaskResults(currentTask, reference, {
+    response: userResponse,
+    testResponse: userTestResponse,
+    comparisonResponse: userResult.data.comparisonResponse,
+    testComparisonResponse: currentTask.test ? userTest.data.comparisonResponse : undefined,
+    state: userResult.data.state,
+  });
 
   return await finalizeTask({
     userSolution: queries,

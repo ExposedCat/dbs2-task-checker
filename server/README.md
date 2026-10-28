@@ -31,9 +31,10 @@ and a 1 MiB request body. One complete grading job runs at a time, with up to 16
 jobs and a 120-second queue wait limit. There is no per-user or multi-tab lock.
 One API process is supported; multiple replicas require a shared queue.
 
-MongoDB invocations have a 20-second deadline and 1 MiB stdout/stderr budget. Redis has a
-15-second deadline and 1 MiB result budget after reply decoding. A cold reference with a
-verification query can require four invocations. Failed/timed-out MongoDB operations
+Each MongoDB job has a shared 20-second deadline; each shell has a 1 MiB stdout/stderr
+budget. Automatic state observation adds trusted before/after shells under that deadline.
+Redis has a 15-second deadline and 1 MiB budgets for replies and each state observation.
+A cold grade runs both reference and student jobs plus any existing verification queries. Failed/timed-out MongoDB operations
 recreate its grading instance; Redis timeouts/transport failures restart Redis before
 returning. The API has 2 CPUs/1 GiB/128 processes; grading containers have separate limits.
 
@@ -49,8 +50,9 @@ Keys hash dataset ID, runtime dataset contents, session solution and verificatio
 Existing sessions retain their task snapshots. Dataset changes during grading reject the
 operation. Entries expire after 30 days, enforced during lookup and by a MongoDB TTL index.
 Bump `REFERENCE_CACHE_VERSION` for engine/module versions or grading semantic changes.
-References must be deterministic: time, random/generated IDs and unspecified ordering need
-exercise-specific normalization. Cache storage is never accessible to submission containers.
+Engine adapters normalize generated IDs and expiry as described below; arbitrary random/time
+answers remain nondeterministic. Row ordering follows the task contract below. Cache storage
+is never accessible to submission containers.
 
 Tests: `bun test src/services/execute/limits.test.ts src/services/reference-cache.test.ts
 src/services/grading-cache.test.ts src/services/portal-login.test.ts`.
@@ -58,3 +60,68 @@ Redis integration requires `RUN_REDIS_INTEGRATION=1` and `REDIS_GRADING_SOCKET` 
 a disposable Redis Stack socket with the grading ACL, plus a disposable grading broker for
 restart recovery. Never run it against the live grading instance. Reference persistence integration requires `TEST_REFERENCE_DB`
 pointing at a disposable MongoDB (writes its `portal` database).
+
+## Grading contract and question-bank validation
+
+Existing question banks and runtime datasets do not need edits. Imports remain nonempty JSON
+arrays with `Question` (nonblank text), `Solution` (a nonempty array of nonblank commands),
+and optional `Test`. `OrderMatters` is an optional override; existing references/questions
+that specify sorting, ranking, or ordered list/stream ranges determine ordering automatically.
+
+Existing `Test` queries execute as before and their structured outputs determine the grade.
+When `Test` is absent, both reference and submission run with before/after database observations
+collected by trusted code. A write is graded by its net state changes, including added, changed,
+and deleted entities and unintended extra changes. A read must match the structured reference
+output and leave state unchanged. For example, a legacy `Solution: ["SET name Alice"]` works
+without a verifier; `SET unrelated Bob` fails automatically. The grading cache stores reference
+observations and uses a new semantic version to invalidate older response-only entries.
+
+Redis observations include key types, values, expiry, Search index definitions and functions;
+hash/set order is normalized, list order is retained. Expiry times compare relative to execution
+start with one second of tolerance. Untouched generated seed stream IDs are excluded from state
+changes and normalized by stream/entry identity in stream query results. MongoDB observations
+run in separate disposable containers using restricted read credentials, capturing collection
+data, options and index definitions. Document order is ignored and array/compound-index order
+is retained. Generated ObjectIds are matched from seed/inserted document identity; ObjectId
+literals in the reference remain significant. Arbitrary time/random-dependent results still
+need deterministic execution; the checker cannot infer unrestricted application semantics.
+
+Before adding imported questions, the API validates every entry and executes each reference
+and any existing verifier against fresh data while holding the shared grading slot. Invalid
+banks are rejected as a whole. No `Test` is required for write references. Existing session
+snapshots are checked for empty/invalid solutions before execution as well.
+
+Results compare JSON structure and values, preserving duplicate rows and ignoring object
+field order. Only row collections may reorder when ordering is not required; nested arrays
+and positional tuples retain their order. Redis adapters preserve hash field/value pairs,
+sorted-set member/score pairs, scan cursor/entry structure, and Search/Aggregate rows.
+Unrecognized Redis reply shapes retain array order conservatively. The legacy trailing
+`GEOSEARCH ... COUNT` form returns cardinality; native `COUNT n` limits keep Redis semantics.
+MongoDB's final query expression is parsed as JavaScript, cursors are fully materialized,
+and results use canonical Extended JSON to preserve BSON values.
+
+Dataset `minPoints` is configurable in the category settings (or the upload API), must be
+an integer from one through the selected question count, and is snapshotted for each attempt.
+Legacy banks default to `min(10, selected question count)`. Completion and retry eligibility
+share the same pass policy; completed attempts retain their threshold even if settings change.
+Category changes/deletions that would make the threshold unreachable are rejected.
+
+`/session` exposes only the current question plus its `sessionId` and `taskId`. `/query`
+requires both IDs, and `/quit` requires `sessionId`. Queued and completed work cannot be
+rebound to another question or attempt; saves, starts and completion use conditional atomic
+updates. Unfinished responses contain only `{ result: null }`. Final responses contain
+`result`, `passed`, `minPoints`, and `wrong`; early quit omits questions not yet displayed.
+Active legacy sessions acquire IDs at API startup without losing saved answers.
+
+Deploy the updated broker together with the API: MongoDB execution requires broker protocol
+3 and rejects older brokers. The grading cache uses a new semantic version automatically.
+
+Regression tests: `bun test`. Disposable engine integration tests:
+`RUN_GRADING_INTEGRATION=1 python scripts/grading/test_broker.py -v` (rootless Podman and
+`docker.io/library/mongo:8`, configurable with `TEST_MONGO_IMAGE`), plus the Redis integration
+command above. The Mongo fixture uses uniquely named containers/volumes and removes them.
+
+An exported existing bank can be checked without editing it using:
+`RUN_LEGACY_BANK_INTEGRATION=1 LEGACY_BANKS_FILE=/path/to/export.json bun scripts/grading/check-legacy-banks.ts`.
+Use only disposable grading engines. Optional `LEGACY_DATASET_ID` selects one bank; the
+checker runs each reference twice across fresh resets and verifies that it is accepted.

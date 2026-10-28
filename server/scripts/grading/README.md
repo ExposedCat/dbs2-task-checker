@@ -8,9 +8,11 @@ multiple API replicas without replacing that queue with a shared queue.
 MongoDB uses a single `grading` database. Every reset kills abandoned grader operations,
 drops that database, and loads the trusted dataset. Each mongosh invocation runs in a
 new disposable container with no network, portal files, API environment, or host sockets
-except its private MongoDB socket. A random restricted `readWrite` credential is passed on
-stdin; it lives only in broker memory and MongoDB's temporary storage. The root credential
-never reaches submitted code. MongoDB authentication prevents instance administration.
+except its private MongoDB socket. A random restricted `readWrite` credential, or a separate `read` credential for trusted state observations, is passed on stdin; credentials live only in broker memory and MongoDB's temporary storage. The root credential
+never reaches submitted code. MongoDB authentication prevents instance administration. Trusted before/after observations
+run separately from submitted code using the read credential, enabling automatic write grading
+without changes to question banks or runtime datasets. Protocol 3 returns canonical Extended JSON and state observations; deploy this broker with the corresponding API.
+The bootstrap file uses a shared SELinux label for access by disposable containers.
 
 Redis uses a private Unix socket with no password. Its ACL denies administrative commands
 and migration. It loads Search and JSON modules only. Reset removes indexes, data, scripts,

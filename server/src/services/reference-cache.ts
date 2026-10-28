@@ -1,7 +1,14 @@
+import type { StateObservation } from './state-comparison';
 import { createHash } from 'node:crypto';
 import type { Collection } from 'mongodb';
 
-export type ReferenceResult = { response: string; testResponse: string | null };
+export type ReferenceResult = {
+  response: string;
+  testResponse: string | null;
+  comparisonResponse?: string;
+  testComparisonResponse?: string;
+  state?: StateObservation;
+};
 export type ReferenceCacheEntry = ReferenceResult & { _id: string; createdAt: Date; expiresAt: Date };
 export type ReferenceIdentity = {
   datasetId: string;
@@ -37,7 +44,16 @@ export async function getOrComputeReference(
 ): Promise<ReferenceResult> {
   const _id = referenceKey(identity);
   const cached = await collection.findOne({ _id, expiresAt: { $gt: new Date() } });
-  if (cached) return { response: cached.response, testResponse: cached.testResponse };
+  if (cached)
+    return {
+      response: cached.response,
+      ...(cached.state ? { state: cached.state } : {}),
+      testResponse: cached.testResponse,
+      ...(typeof cached.comparisonResponse !== 'string' ? {} : { comparisonResponse: cached.comparisonResponse }),
+      ...(typeof cached.testComparisonResponse !== 'string'
+        ? {}
+        : { testComparisonResponse: cached.testComparisonResponse }),
+    };
 
   // Only successful trusted reference executions may populate this collection.
   // Caller holds the grading queue slot throughout lookup, computation, and submission.

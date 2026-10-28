@@ -1,7 +1,6 @@
 import { Flex } from '@styled-system/jsx/flex.mjs';
 import React from 'react';
 
-import { setServers } from 'dns';
 import { css } from '@styled-system/css/css.mjs';
 import { usePostRequest } from '~/hooks/usePostRequest.js';
 import { useDatasets } from '~/providers/DatasetsProvider.js';
@@ -47,7 +46,9 @@ const EmptyBody: React.FC = () => {
   );
 };
 
-type ResultCallback = (args: { correct: number; total: number; wrong: string[] } | null) => void;
+type TestResult = { correct: number; total: number; wrong: string[]; passed: boolean; minPoints: number };
+type ResultCallback = (args: TestResult | null) => void;
+type FinalResponse = { result: number; wrong: string[]; passed: boolean; minPoints: number };
 
 const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
   const {
@@ -55,6 +56,13 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     refetch: refetchSession,
   } = useSession();
 
+  const active = React.useRef(true);
+  React.useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const solutionRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const [solutions, setSolutions] = React.useState<string[]>([]);
@@ -65,19 +73,23 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
     [],
   );
 
-  const quitQuery = usePostRequest<{ wrong: string[]; result: number | null }>('/quit', {
+  const quitQuery = usePostRequest<FinalResponse>('/quit', {
     onSuccess: response => {
+      if (!active.current) return;
       onResult({
         correct: response.result ?? 0,
         total: testSession?.questionTotal ?? 0,
         wrong: response.wrong,
+        passed: response.passed,
+        minPoints: response.minPoints,
       });
       refetchSession();
     },
   });
 
-  const query = usePostRequest<{ wrong: string[]; result: number | null }>('/query', {
+  const query = usePostRequest<{ result: null } | FinalResponse>('/query', {
     onSuccess: response => {
+      if (!active.current) return;
       if (solutionRef.current) {
         solutionRef.current.value = '';
       }
@@ -86,6 +98,8 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
           correct: response.result,
           total: testSession?.questionTotal ?? 0,
           wrong: response.wrong,
+          passed: response.passed,
+          minPoints: response.minPoints,
         });
       }
       setSolutions([]);
@@ -94,11 +108,15 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
   });
 
   const handleExecute = React.useCallback(
-    (skip = false) => query.request({ queries: skip ? [] : solutions }),
-    [query, solutions],
+    (skip = false) =>
+      query.request({ sessionId: testSession?.sessionId, taskId: testSession?.taskId, queries: skip ? [] : solutions }),
+    [query, solutions, testSession?.sessionId, testSession?.taskId],
   );
 
-  const handleQuit = React.useCallback(() => quitQuery.request({}), [query, solutions]);
+  const handleQuit = React.useCallback(
+    () => quitQuery.request({ sessionId: testSession?.sessionId }),
+    [quitQuery, testSession?.sessionId],
+  );
 
   React.useEffect(() => {
     if (query.state === 'success') {
@@ -156,19 +174,23 @@ const QuestionBody: React.FC<{ onResult: ResultCallback }> = ({ onResult }) => {
         </Flex>
       </Card>
       {query.state === 'error' && <ErrorCard error={query.error} />}
+      {quitQuery.state === 'error' && <ErrorCard error={quitQuery.error} />}
     </>
   );
 };
 
-const ResultBody: React.FC<{ correct: number; total: number; wrong: string[]; onResult: ResultCallback }> = ({
+const ResultBody: React.FC<TestResult & { onResult: ResultCallback }> = ({
   correct,
   total,
   onResult,
   wrong,
+  passed,
+  minPoints,
 }) => {
   return (
     <>
       <Label text={`Correct: ${correct}/${total}`} />
+      <Label text={`${passed ? 'Passed' : 'Not passed'} (required: ${minPoints})`} />
       {wrong.length === 0 && <Label text="You got it all right, congratulations!" />}
       {wrong.length !== 0 && (
         <Flex align="start" direction="column" paddingX="lg">
@@ -188,11 +210,11 @@ export const QuestionCard: React.FC = () => {
     session: { testSession },
   } = useSession();
 
-  const [result, setResult] = React.useState<{ correct: number; total: number; wrong: string[] } | null>(null);
+  const [result, setResult] = React.useState<TestResult | null>(null);
 
   if (result !== null) {
     return <ResultBody {...result} onResult={setResult} />;
   }
 
-  return testSession ? <QuestionBody onResult={setResult} /> : <EmptyBody />;
+  return testSession ? <QuestionBody key={testSession.sessionId} onResult={setResult} /> : <EmptyBody />;
 };

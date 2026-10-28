@@ -29,6 +29,7 @@ export const UploadDatasetRoute = new Elysia({ name: 'Route.UploadDataset' }) //
         id: t.String(),
         name: t.String(),
         kind: t.String(),
+        minPoints: t.Optional(t.Numeric({ minimum: 1 })),
         file: t.Nullable(t.File()),
       }),
     },

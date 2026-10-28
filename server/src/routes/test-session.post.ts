@@ -1,5 +1,6 @@
 import Elysia, { t } from 'elysia';
 import { RequireAuth } from '../middlewares/auth';
+import { requiredPoints } from '../services/test-policy';
 import type { DatasetName } from '../services/execute';
 import { quitTestSession, startTestSession } from '../services/user';
 
@@ -17,13 +18,20 @@ export const TestSessionRoute = new Elysia({ name: 'Route.TestSession' }) //
           database,
           user,
           cathegories: dataset.kinds,
-          minPoints: 10,
+          minPoints: requiredPoints(dataset),
         });
       }
+      return { ok: false, data: null, error: 'Dataset not found' };
     },
     { body: t.Object({ datasetId: t.String() }) },
   );
 
 export const QuitTestSessionRoute = new Elysia({ name: 'Route.QuitTestSession' }) //
   .use(RequireAuth)
-  .post('/quit', async ({ database, user }) => await quitTestSession({ database, user, force: true }));
+  .post(
+    '/quit',
+    async ({ database, user, body }) => quitTestSession({ database, user, sessionId: body.sessionId, force: true }),
+    {
+      body: t.Object({ sessionId: t.String({ minLength: 1 }) }),
+    },
+  );

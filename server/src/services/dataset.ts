@@ -1,3 +1,7 @@
+import type { DatasetName } from './execute';
+import { withSubmissionSlot } from './execute/limits';
+import { validateTask, validateReference } from './task-validation';
+import { requiredPoints, validateTestPolicy } from './test-policy';
 import type { Database } from './database.js';
 import { parseCommand } from './escape.js';
 import type { ServiceResponse } from './response.js';
@@ -6,11 +10,13 @@ export type Dataset = {
   id: string;
   name: string;
   kinds: Record<string, number>;
+  minPoints?: number;
   bank: {
     kind: string;
     question: string;
     solution: string[];
     test: string | null;
+    orderMatters?: boolean;
   }[];
 };
 
@@ -67,25 +73,30 @@ export async function getDatasets({ database }: GetDatasetsArgs) {
   return {
     ok: true,
     error: null,
-    data: await database.datasets
-      .find<Pick<Dataset, 'id' | 'name'>>(
-        { kinds: { $ne: undefined } },
-        {
-          projection: {
-            _id: false,
-            id: true,
-            name: true,
+    data: (
+      await database.datasets
+        .find(
+          {},
+          {
+            projection: { _id: false, id: true, name: true, kinds: true, minPoints: true },
           },
-        },
-      )
-      .toArray(),
+        )
+        .toArray()
+    )
+      .filter(dataset => dataset.kinds)
+      .map(dataset => ({
+        id: dataset.id,
+        name: dataset.name,
+        minPoints: requiredPoints(dataset),
+      })),
   };
 }
 
 export type RawDatasetEntry = {
   Question: string;
   Solution: string[];
-  Test: string;
+  Test?: string | null;
+  OrderMatters?: boolean;
 };
 
 export type CreateOrUpdateDatasetArgs = {
@@ -93,7 +104,8 @@ export type CreateOrUpdateDatasetArgs = {
   name: string;
   kind: string;
   database: Database;
-  data: RawDatasetEntry[];
+  data: unknown;
+  minPoints?: number;
 };
 
 export async function createOrUpdateDataset({
@@ -102,13 +114,50 @@ export async function createOrUpdateDataset({
   kind,
   data,
   database,
+  minPoints,
 }: CreateOrUpdateDatasetArgs): Promise<ServiceResponse<null>> {
-  const bank: Dataset['bank'] = data.map(item => ({
-    kind,
-    question: item.Question,
-    solution: item.Solution,
-    test: item.Test || null,
-  }));
+  const invalid = (error: string): ServiceResponse<null> => ({ ok: false, data: null, error });
+  if (!['redis', 'RedisBasic', 'RedisAdvanced', 'mongodb'].includes(id)) return invalid('Unsupported dataset ID');
+  if (!name.trim() || !kind.trim() || /[.$]/.test(kind)) return invalid('Name and a valid category are required');
+  if (!Array.isArray(data) || data.length === 0) return invalid('Question bank must be a nonempty array');
+  const bank: Dataset['bank'] = [];
+  for (const [index, item] of data.entries()) {
+    if (!item || typeof item !== 'object') return invalid(`Question ${index + 1}: invalid entry`);
+    const task = {
+      kind,
+      question: item.Question,
+      solution: item.Solution,
+      test:
+        item.Test === undefined || item.Test === null || (typeof item.Test === 'string' && !item.Test.trim())
+          ? null
+          : item.Test,
+      orderMatters: item.OrderMatters,
+    };
+    const error = validateTask(task);
+    if (error) return invalid(`Question ${index + 1}: ${error}`);
+    bank.push(task);
+  }
+  const existing = await database.datasets.findOne({ id });
+  const candidate = {
+    bank: [...(existing?.bank ?? []), ...bank],
+    kinds: { ...(existing?.kinds ?? {}), [kind]: existing?.kinds[kind] ?? 1 },
+    minPoints: minPoints ?? existing?.minPoints,
+  };
+  const policyError = validateTestPolicy(candidate);
+  if (policyError) return invalid(policyError);
+  try {
+    await withSubmissionSlot(async () => {
+      for (const [index, task] of bank.entries()) {
+        try {
+          await validateReference(id as DatasetName, task);
+        } catch (error) {
+          throw new Error(`Question ${index + 1}: ${error instanceof Error ? error.message : 'Reference failed'}`);
+        }
+      }
+    });
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : 'Reference validation failed');
+  }
 
   await database.datasets.findOneAndUpdate(
     { id },
@@ -116,11 +165,12 @@ export async function createOrUpdateDataset({
       $addToSet: {
         bank: { $each: bank },
       },
-      $setOnInsert: {
-        id,
+      $set: {
         name,
-        [`kinds.${kind}`]: 1,
+        kinds: candidate.kinds,
+        ...(candidate.minPoints === undefined ? {} : { minPoints: candidate.minPoints }),
       },
+      $setOnInsert: { id },
     },
     { upsert: true },
   );
@@ -131,6 +181,7 @@ export async function createOrUpdateDataset({
 export type SetDatasetKindsArgs = {
   datasetId: string;
   kinds: Record<string, number>;
+  minPoints?: number;
   database: Database;
 };
 
@@ -138,11 +189,17 @@ export async function setDatasetKinds({
   datasetId,
   kinds,
   database,
+  minPoints,
 }: SetDatasetKindsArgs): Promise<ServiceResponse<null>> {
+  const dataset = await database.datasets.findOne({ id: datasetId });
+  if (!dataset) return { ok: false, data: null, error: 'Dataset not found' };
+  const next = { ...dataset, kinds: { ...dataset.kinds, ...kinds }, minPoints: minPoints ?? dataset.minPoints };
+  const error = validateTestPolicy(next);
+  if (error) return { ok: false, data: null, error };
   await database.datasets.updateOne(
     { id: datasetId },
     {
-      $set: Object.fromEntries(Object.entries(kinds).map(([kind, value]) => [`kinds.${kind}`, value])),
+      $set: { kinds: next.kinds, ...(next.minPoints === undefined ? {} : { minPoints: next.minPoints }) },
     },
   );
   return { ok: true, data: null, error: null };
@@ -226,6 +283,12 @@ export type DeleteDatasetKindArgs = {
 };
 
 export async function deleteDatasetKind({ id, database, kind }: DeleteDatasetKindArgs) {
-  await database.datasets.updateOne({ id }, { $pull: { bank: { kind } } });
+  const dataset = await database.datasets.findOne({ id });
+  if (!dataset) return { ok: false, data: null, error: 'Dataset not found' };
+  const kinds = Object.fromEntries(Object.entries(dataset.kinds).filter(([key]) => key !== kind));
+  const bank = dataset.bank.filter(task => task.kind !== kind);
+  const error = validateTestPolicy({ ...dataset, kinds, bank });
+  if (error) return { ok: false, data: null, error };
+  await database.datasets.updateOne({ id }, { $set: { kinds, bank } });
   return { ok: true, error: null, data: null };
 }

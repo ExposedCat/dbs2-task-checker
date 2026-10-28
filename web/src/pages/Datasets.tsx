@@ -26,6 +26,7 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
   const { refetch } = useDatasets();
   const { register, handleSubmit } = useForm<{
     kinds: Record<string, string>;
+    minPoints: string;
   }>();
 
   const queryUrl = React.useMemo(() => `/dataset-kinds?datasetId=${dataset.id}`, [dataset.id]);
@@ -65,9 +66,10 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
   );
 
   const onSubmit = React.useCallback(
-    (data: { kinds: Record<string, string> }) => {
+    (data: { kinds: Record<string, string>; minPoints: string }) => {
       saveQuery.request({
         id: dataset.id,
+        minPoints: Number(data.minPoints || dataset.minPoints),
         kinds: Object.fromEntries(
           Object.entries(data.kinds)
             .filter(([_, value]) => value)
@@ -132,6 +134,9 @@ const ManageDataset: React.FC<ManageDatasetProps> = ({ dataset }) => {
                   </Flex>
                 </Flex>
               ))}
+            <Label text="Passing points" />
+            <Input type="number" min="1" placeholder={String(dataset.minPoints)} {...register('minPoints')} />
+            {saveQuery.state === 'error' && <Label text={String(saveQuery.error)} color="warning" />}
             <Button label="Save" disabled={query.data?.length === 0} />
           </Flex>
         </form>
@@ -205,7 +210,7 @@ export function DatasetsPage() {
         </Flex>
       </form>
       {query.state === 'success' && <Label text="Successfully Uploaded" color="success" />}
-      {query.state === 'error' && <Label text="Upload Failed. See Console (F12) for details" />}
+      {query.state === 'error' && <Label text={`Upload failed: ${String(query.error)}`} />}
     </Page>
   );
 }

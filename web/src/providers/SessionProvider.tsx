@@ -3,6 +3,8 @@ import { buildProvider } from '~/utils/provider.js';
 export type Session = {
   login: string;
   testSession: {
+    sessionId: string;
+    taskId: string;
     kind: string;
     datasetId: string;
     question: string;

@@ -3,6 +3,7 @@ import { buildProvider } from '~/utils/provider.js';
 export type Dataset = {
   id: string;
   name: string;
+  minPoints: number;
   bank: {
     Question: string;
   }[];

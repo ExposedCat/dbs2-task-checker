@@ -12,6 +12,7 @@
     "@elysiajs/cors": "^1.2.0",
     "@elysiajs/jwt": "^1.2.0",
     "@tsconfig/recommended": "^1.0.8",
+    "acorn": "8.14.0",
     "elysia": "1.2.25",
     "mongodb": "^6.12.0",
     "redis": "^4.7.0",

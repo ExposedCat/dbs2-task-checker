@@ -27,6 +27,7 @@ LIMIT = 1024 * 1024
 LOCK = threading.Lock()
 ROOT_PASSWORD = ''
 GRADER_PASSWORD = ''
+READER_PASSWORD = ''
 
 
 def podman(*args, input=None, timeout=30):
@@ -46,14 +47,14 @@ def mongo_admin(code, bootstrap=False):
 
 
 def start_mongo():
-    global ROOT_PASSWORD, GRADER_PASSWORD
+    global ROOT_PASSWORD, GRADER_PASSWORD, READER_PASSWORD
     subprocess.run(['podman', 'rm', '-f', '-t', '0', MONGO], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    ROOT_PASSWORD, GRADER_PASSWORD = secrets.token_hex(32), secrets.token_hex(32)
+    ROOT_PASSWORD, GRADER_PASSWORD, READER_PASSWORD = (secrets.token_hex(32) for _ in range(3))
     if subprocess.run(['podman', 'volume', 'exists', MONGO_VOL]).returncode:
         podman('volume', 'create', MONGO_VOL)
     podman('run', '-d', '--name', MONGO, '--network', 'none', '--memory', '1g', '--cpus', '2', '--pids-limit', '256',
            '--read-only', '--tmpfs', '/data/db:rw,size=768m', '--tmpfs', '/data/configdb:rw,size=16m',
-           '-v', MONGO_VOL + ':/run/grading-mongo', '-v', str(BASE / 'bootstrap.cjs') + ':/opt/grading-bootstrap.cjs:ro', '--entrypoint', 'sh', CONFIG['mongoImage'], '-c',
+           '-v', MONGO_VOL + ':/run/grading-mongo', '-v', str(BASE / 'bootstrap.cjs') + ':/opt/grading-bootstrap.cjs:ro,z', '--entrypoint', 'sh', CONFIG['mongoImage'], '-c',
            'chmod 777 /run/grading-mongo; exec docker-entrypoint.sh mongod --auth --bind_ip 127.0.0.1 '
            '--unixSocketPrefix /run/grading-mongo --filePermissions 0666 --wiredTigerCacheSizeGB 0.25')
     for _ in range(30):
@@ -67,6 +68,9 @@ def start_mongo():
     mongo_admin('db.createUser(' + json.dumps({'user': 'root', 'pwd': ROOT_PASSWORD, 'roles': ['root']}) + ')', bootstrap=True)
     mongo_admin('db.createUser(' + json.dumps({'user': 'grader', 'pwd': GRADER_PASSWORD,
         'roles': [{'role': 'readWrite', 'db': 'grading'}]}) + ')')
+
+    mongo_admin('db.createUser(' + json.dumps({'user': 'reader', 'pwd': READER_PASSWORD,
+        'roles': [{'role': 'read', 'db': 'grading'}]}) + ')')
 
 
 def start_redis():
@@ -92,19 +96,20 @@ def start_redis():
     raise RuntimeError('Grading Redis did not become ready')
 
 
-def run_shell(code, deadline):
+def run_shell(code, deadline, read_only=False):
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise RuntimeError('Execution time limit exceeded')
     name = 'dbs-grading-job-' + secrets.token_hex(8)
-    uri = f'mongodb://grader:{GRADER_PASSWORD}@%2Frun%2Fgrading-mongo%2Fmongodb-27017.sock/grading?authSource=admin'
+    login, password = ('reader', READER_PASSWORD) if read_only else ('grader', GRADER_PASSWORD)
+    uri = f'mongodb://{login}:{password}@%2Frun%2Fgrading-mongo%2Fmongodb-27017.sock/grading?authSource=admin'
     args = ['podman', 'run', '--rm', '-i', '--name', name, '--network', 'none', '--read-only',
             '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '256m', '--cpus', '1',
             '--pids-limit', '64', '--user', '1000:1000', '--tmpfs', '/tmp:rw,size=32m,mode=1777',
             '-e', 'HOME=/tmp', '-e', 'NODE_OPTIONS=--require /opt/grading-bootstrap.cjs',
-            '-v', str(BASE / 'bootstrap.cjs') + ':/opt/grading-bootstrap.cjs:ro',
+            '-v', str(BASE / 'bootstrap.cjs') + ':/opt/grading-bootstrap.cjs:ro,z',
             '-v', MONGO_VOL + ':/run/grading-mongo:ro',
-            '--entrypoint', 'mongosh', CONFIG['mongoImage'], '--nodb', '--quiet']
+            '--entrypoint', 'mongosh', CONFIG['mongoImage'], '--nodb', '--quiet', '--json=canonical']
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     payload = json.dumps({'uri': uri, 'code': code}).encode()
     # The dataset can exceed pipe capacity; feed stdin while draining bounded output.
@@ -134,7 +139,7 @@ def run_shell(code, deadline):
                     raise RuntimeError('Execution output limit exceeded')
         proc.wait(timeout=max(0.1, deadline - time.monotonic()))
         if proc.returncode:
-            raise RuntimeError(stderr.decode(errors='replace')[-4096:] or 'MongoDB query failed')
+            raise RuntimeError((stderr or stdout).decode(errors='replace')[-4096:] or 'MongoDB query failed')
         return stdout.decode(errors='replace')
     finally:
         selector.close()
@@ -143,25 +148,54 @@ def run_shell(code, deadline):
             proc.kill()
         proc.wait()
         writer.join(timeout=1)
+        proc.stdout.close()
+        proc.stderr.close()
+
+
+
+MONGO_SNAPSHOT = """(async function () {
+    const result = Object.create(null);
+    for (const info of db.getCollectionInfos()) {
+        const collection = db.getCollection(info.name);
+        result[info.name] = {
+            type: info.type, options: info.options,
+            documents: info.type === 'view' ? [] : await collection.find().toArray(),
+            indexes: info.type === 'view' ? [] : (await collection.getIndexes()).map(index => ({
+                ...index, key: Object.entries(index.key)
+            }))
+        };
+    }
+    return result;
+})()"""
 
 
 def mongo_execute(body):
     queries = body.get('queries')
     if not isinstance(queries, list) or len(queries) > 100 or any(not isinstance(q, str) for q in queries):
         raise ValueError('Invalid queries')
-    if sum(len(q.encode()) for q in queries) > 65536:
+    if sum(len(q.encode()) for q in queries) > 65536 + 1024:  # Allow the API's trusted cursor-materialization wrapper.
         raise ValueError('Query input limit exceeded')
     if not isinstance(body.get('noReset', False), bool):
         raise ValueError('Invalid reset flag')
+    if not isinstance(body.get('readOnly', False), bool):
+        raise ValueError('Invalid read-only flag')
+    if not isinstance(body.get('captureState', False), bool):
+        raise ValueError('Invalid state flag')
     deadline = time.monotonic() + 20
     if not body.get('noReset', False):
         # Kill any abandoned server-side work and remove the whole grading DB.
-        mongo_admin("db.currentOp({active:true}).inprog.filter(o=>(o.effectiveUsers||[]).some(u=>u.user==='grader')).forEach(o=>db.killOp(o.opid)); db.getSiblingDB('grading').dropDatabase()")
+        mongo_admin("db.currentOp({active:true}).inprog.filter(o=>(o.effectiveUsers||[]).some(u=>['grader','reader'].includes(u.user))).forEach(o=>db.killOp(o.opid)); db.getSiblingDB('grading').dropDatabase()")
         run_shell(pathlib.Path(CONFIG['dataset']).read_text(), deadline)
     code = ';'.join(q.strip() for q in queries if q.strip())
     if not code:
-        return {'response': 'Dataset loaded', 'skipped': True}
-    return {'response': run_shell(code, deadline)}
+        return {'response': 'Dataset loaded', 'skipped': True, 'protocolVersion': 3}
+    before = run_shell(MONGO_SNAPSHOT, deadline, read_only=True) if body.get('captureState') else None
+    response = run_shell(code, deadline, read_only=body.get('readOnly', False))
+    result = {'response': response, 'protocolVersion': 3}
+    if before is not None:
+        result['state'] = {'engine': 'mongodb', 'before': before,
+                           'after': run_shell(MONGO_SNAPSHOT, deadline, read_only=True), 'startedAt': 0}
+    return result
 
 
 def approval(code, uid):

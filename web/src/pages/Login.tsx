@@ -138,7 +138,7 @@ export function LoginPage() {
 
       <ol style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 560, listStyle: 'none', margin: 0, padding: 0 }}>
         <li style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Label text="1. Connect over SSH with your username" />
+          <Label text="1. Connect to the NoSQL with your username using SSH:" />
           <Card>
             <code style={{ userSelect: 'all', overflowWrap: 'anywhere' }}>
               ssh YOUR_USERNAME@nosql.felk.cvut.cz

@@ -1,12 +1,11 @@
 import Elysia, { t } from 'elysia';
 import { RequireAuth } from '../middlewares/auth';
-import type { ServiceResponse } from '../services/response';
 import { MAX_QUERIES, MAX_QUERY_LENGTH, MAX_QUERY_BYTES, withSubmissionSlot } from '../services/execute/limits';
 import { executeQuestion, getUser } from '../services/user';
 
 export const QueryRoute = new Elysia({ name: 'Route.Query' }).use(RequireAuth).post(
   '/query',
-  async ({ user, body, database }): Promise<ServiceResponse<{ result: number | null }>> => {
+  async ({ user, body, database }) => {
     if (body.queries.reduce((bytes, query) => bytes + Buffer.byteLength(query), 0) > MAX_QUERY_BYTES) {
       return {
         ok: false,
@@ -16,7 +15,7 @@ export const QueryRoute = new Elysia({ name: 'Route.Query' }).use(RequireAuth).p
     }
     try {
       return await withSubmissionSlot(async () => {
-        // Requests may wait in the queue: load the current task only when work begins.
+        // IDs are captured in the request, never rebound to a new task after a queue wait.
         const currentUser = await getUser({ database, userId: user._id.toString() });
         if (!currentUser) return { ok: false as const, data: null, error: 'Unauthorized' };
         return executeQuestion({ ...body, database, user: currentUser });
@@ -31,6 +30,8 @@ export const QueryRoute = new Elysia({ name: 'Route.Query' }).use(RequireAuth).p
   },
   {
     body: t.Object({
+      sessionId: t.String({ minLength: 1 }),
+      taskId: t.String({ minLength: 1 }),
       queries: t.Array(t.String({ maxLength: MAX_QUERY_LENGTH }), {
         maxItems: MAX_QUERIES,
       }),

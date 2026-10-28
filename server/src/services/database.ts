@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { requiredPoints } from './test-policy';
 import { MongoClient } from 'mongodb';
 import type { Collection } from 'mongodb';
 
@@ -19,6 +21,26 @@ export async function createDbConnection(connectionString: string) {
   const users = mongoDb.collection<User>('users');
   await users.updateMany({ created: { $exists: false } }, { $set: { created: true } });
   const datasets = mongoDb.collection<Dataset>('datasets');
+
+  // Upgrade active pre-ID sessions without losing their saved answers.
+  for await (const user of users.find({ testSession: { $ne: null }, 'testSession.id': { $exists: false } })) {
+    if (!user.testSession) continue;
+    const dataset = await datasets.findOne({ id: user.testSession.datasetId });
+    const total = user.testSession.tasks.length;
+    await users.updateOne(
+      { _id: user._id, 'testSession.id': { $exists: false } },
+      {
+        $set: {
+          testSession: {
+            ...user.testSession,
+            id: randomUUID(),
+            minPoints: Math.min(total, dataset ? requiredPoints(dataset) : 10),
+            tasks: user.testSession.tasks.map(task => ({ ...task, id: randomUUID() })),
+          },
+        },
+      },
+    );
+  }
 
   const referenceCache = mongoDb.collection<ReferenceCacheEntry>('referenceCache');
   await referenceCache.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
