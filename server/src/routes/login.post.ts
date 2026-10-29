@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { RequireBase } from '../middlewares/base';
+import { forcedUserName } from '../services/force-user';
 import { portalLogin } from '../services/portal-login';
 import { startLoginApprovalSocket } from '../services/portal-login-socket';
 
@@ -9,7 +10,7 @@ let approvalServer: ReturnType<typeof startLoginApprovalSocket> | undefined;
 export const LoginRoute = new Elysia({ name: 'Route.Login' })
   .use(RequireBase)
   .onStart(({ decorator: { database } }) => {
-    if (!socketPath) return;
+    if (forcedUserName() || !socketPath) return;
     approvalServer = startLoginApprovalSocket(socketPath, async login => {
       const user = await database.users.findOne({ user: login, created: { $ne: false } }, { projection: { _id: 1 } });
       return user?._id.toString() ?? null;

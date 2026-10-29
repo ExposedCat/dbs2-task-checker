@@ -5,7 +5,9 @@ services:
   # Static frontend + reverse proxy. The only service that publishes ports to the host.
   # Browser -> :80 (/ -> React bundle, /api/* -> server:8080)
   web:
-    build: ./web
+    build:
+      context: ./web
+      dockerfile: Containerfile
     image: dbs2-task-checker-web
     restart: unless-stopped
     ports:
@@ -24,7 +26,9 @@ services:
     cpus: 2
     mem_limit: 1g
     pids_limit: 128
-    build: ./server
+    build:
+      context: ./server
+      dockerfile: Containerfile
     image: dbs2-task-checker-server
     restart: unless-stopped
     environment:

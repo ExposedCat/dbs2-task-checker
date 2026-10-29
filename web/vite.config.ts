@@ -23,6 +23,15 @@ export default defineConfig(({ mode }) => {
   const devServer: ServerOptions = {
     port: 3000,
     host: '127.0.0.1',
+    proxy: process.env.API_PROXY_TARGET
+      ? {
+          '/api': {
+            target: process.env.API_PROXY_TARGET,
+            changeOrigin: true,
+            rewrite: path => path.replace(/^\/api/, ''),
+          },
+        }
+      : undefined,
     watch: {},
   };
 

@@ -9,6 +9,7 @@ server/                 Bun + Elysia API
 redis-sandbox/          Optional: image running one RediSearch-enabled Redis per student
 compose.yaml            web + server, using databases that already run on the host
 compose.local-db.yaml   Overlay adding the portal database; host grading broker still required
+compose.dev.yaml        Frontend, API and portal database with hot reload and a forced development user
 ```
 
 ## How it fits together
@@ -22,7 +23,7 @@ browser ──:80/443──> web (Caddy)
                                         └── grading Redis       shared private Unix socket, reset per job
 ```
 
-- Only `web` publishes ports: **80** (and 443), so the URL needs no port.
+- In `compose.yaml`, only `web` publishes ports: **80** (and 443), so the URL needs no port.
 - The frontend is built with `VITE_BASE_API_URL=/api`, i.e. relative to wherever the site is
   served from; nothing host-specific is baked into the bundle.
 - The server reaches the databases wherever `.env` says. `host.containers.internal` resolves
@@ -31,77 +32,9 @@ browser ──:80/443──> web (Caddy)
   student password. Reference results are cached across students. Personal database ports
   remain metadata for the admin Services page.
 
-## Deploying on nosql.felk.cvut.cz
-
-The databases already run there as rootless containers of `yuliia` (`~/infra/README.md`):
-`yuliia-mongodb` holds both the `portal` database and the student sandboxes on host port
-42222, and every student has a `yuliia-redis-<login>` container on the port registered in
-`~/infra/redis/users.json`. Students are created from the portal Users page (multiple rows or a TXT upload).
-The portal creates pending records first, then provisions infrastructure through
-`~/scripts/users/users.bash`; see [host setup](server/scripts/host/README.md). The separate grading broker and private databases live in `~/infra/grading`.
-Install them first using [the broker guide](server/scripts/grading/README.md).
-
-One-time, as root:
-
-```sh
-# let rootless podman bind ports 80/443 (everything keeps running as yuliia)
-sysctl net.ipv4.ip_unprivileged_port_start=80
-echo 'net.ipv4.ip_unprivileged_port_start=80' > /etc/sysctl.d/99-unprivileged-ports.conf
-# 80/443 are currently filtered by ufw
-ufw allow 80/tcp comment 'Portal HTTP'
-ufw allow 443/tcp comment 'Portal HTTPS'
-```
-
-As `yuliia`, the portal lives in `~/infra/portal` next to the other services:
-
-```sh
-git clone https://github.com/ExposedCat/dbs2-task-checker.git ~/infra/portal && cd ~/infra/portal
-cp .env.example .env
-#   JWT_SECRET         the existing one (keeps sessions valid)
-#   DB_CONNECTION_URL  mongodb://admin:<password>@host.containers.internal:42222
-# runtime datasets go to server/datasets/ (git-ignored)
-~/infra-tools/compose-venv/bin/podman-compose up -d --build
-curl -s http://127.0.0.1/api/session          # -> {"ok":false,...,"error":"Unauthorized"}
-```
-
-`~/infra/bin/mongo-admin.ts` (used by student provisioning) imports the MongoDB driver from
-`~/infra/portal/server/node_modules`, so keep `bun install --frozen-lockfile` run in
-`server/` after pulling a change to its dependencies.
-
-Autostart, in the same style as the other infra units (`~/.config/systemd/user/dbs2-portal.service`):
-
-```ini
-[Unit]
-Description=DBS2 task checker portal
-Wants=network-online.target yuliia-mongodb.service dbs-grading.service
-After=network-online.target yuliia-mongodb.service dbs-grading.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=%h/infra/portal
-ExecStart=%h/infra-tools/compose-venv/bin/podman-compose up -d
-ExecStop=%h/infra-tools/compose-venv/bin/podman-compose stop
-TimeoutStartSec=300
-TimeoutStopSec=180
-
-[Install]
-WantedBy=default.target
-```
-
-```sh
-systemctl --user daemon-reload && systemctl --user enable --now dbs2-portal
-```
-
-Updating: `git pull && podman-compose up -d --build`.
-
-Optional HTTPS: set `SITE_ADDRESS=nosql.felk.cvut.cz` in `.env` and `podman-compose up -d`.
-Caddy obtains and renews a Let's Encrypt certificate and redirects HTTP to HTTPS; this needs
-80 and 443 reachable from the internet.
-
 ## Portal database and accounts
 
-The optional `compose.local-db.yaml` overlay adds a portal MongoDB. Both deployment modes
+The optional `compose.local-db.yaml` overlay adds a portal MongoDB. Both database configurations
 require the separate [host grading broker](server/scripts/grading/README.md).
 Runtime datasets go in `server/datasets/`; admins upload question banks through the UI.
 
@@ -130,24 +63,50 @@ See [SSH login](server/scripts/host/PORTAL-LOGIN.md) for transport limitations.
 | `SITE_ADDRESS`                | `:80`                                      | Caddy site address; a domain enables automatic HTTPS         |
 | `WEB_HTTP_PORT` / `_HTTPS_PORT` | `80` / `443`                             | Host ports published by `web`                                |
 
-`docker compose` works the same way as `podman-compose`. Rootless podman needs
-`net.ipv4.ip_unprivileged_port_start=80` to bind port 80 (or set `WEB_HTTP_PORT=8080`).
+For rootless Podman, set `WEB_HTTP_PORT=8080` if binding port 80 is unavailable.
 
 ## Local development
 
-Start/configure the host broker as described in its guide. `compose.dev.yaml` starts a
-portal MongoDB and the API with hot reload, mounting the broker and login sockets just as
-production does. The frontend runs separately with Vite.
+The portal's Compose files are compatible with **Docker Compose** and **Podman Compose**.
+The separate Linux grading broker currently uses Podman; configure it using
+[the broker guide](server/scripts/grading/README.md) before starting the portal.
+Copy `.env.example` to `.env` and set `GRADING_CONTROL_DIR` and `PORTAL_LOGIN_DIR` to
+match the broker's socket directories. Runtime datasets belong in `server/datasets/`.
+
+`compose.dev.yaml` starts the frontend, API and portal MongoDB. Node, npm and Bun run
+inside the containers; you do not need them installed locally. Frontend and API source
+changes reload automatically. For Docker Engine on Linux, first expose the broker's Redis
+socket directory as a Docker volume (Docker and Podman have separate volume stores):
+
+```sh
+docker volume create --driver local \
+  --opt type=none --opt o=bind \
+  --opt device="$(podman volume inspect dbs-grading-redis-socket --format '{{.Mountpoint}}')" \
+  dbs-grading-redis-socket
+
+docker compose -f compose.dev.yaml up -d --build
+```
+
+With Podman Compose, use:
 
 ```sh
 podman-compose -f compose.dev.yaml up -d --build
-podman-compose -f compose.dev.yaml --profile seed run --rm seed
-cd web && npm install && npm run dev
 ```
 
-Seed creates passwordless portal identities `admin` and `student`; map your local SSH
-account in broker config to one of these. Upload question banks as admin and provide the
-runtime datasets. No sample database passwords are stored by the portal.
+Open **http://127.0.0.1:3000** in your browser after Compose starts. The frontend
+forwards `/api` requests to the API container automatically. No separate frontend command
+or `web/.env` setup is needed.
+
+Authentication is skipped locally using `FORCE_USER`, which defaults to `student` in
+`compose.dev.yaml`. The selected demo account is created automatically. To test as admin:
+
+```sh
+FORCE_USER=admin docker compose -f compose.dev.yaml up -d
+```
+
+Refresh the browser after changing accounts. Use `FORCE_USER=student` to switch back.
+This override applies only with `NODE_ENV=development`; production uses SSH code approval.
+The grading broker is still needed to execute student queries.
 
 See `web/README.md` and `server/README.md` for package details.
 

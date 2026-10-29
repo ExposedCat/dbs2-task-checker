@@ -4,6 +4,13 @@
 
 This package is a frontend for the Task Checker application
 
+## Local development
+
+From the repository root, run `docker compose -f compose.dev.yaml up -d --build`
+(or use `podman-compose`) and open http://127.0.0.1:3000. Compose runs Vite and npm
+inside the frontend container and proxies `/api` to the backend. Source changes reload
+automatically. See the root README for the grading broker prerequisites.
+
 ## Tech Stack
 
 - Language: **TypeScript (JavaScript)**

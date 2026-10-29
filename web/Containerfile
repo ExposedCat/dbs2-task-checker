@@ -1,5 +1,5 @@
-# --- Build the static bundle ---------------------------------------------------
-FROM docker.io/library/node:22-alpine AS build
+# --- Shared frontend dependencies and source ----------------------------------
+FROM docker.io/library/node:22-alpine AS source
 
 WORKDIR /app
 
@@ -8,6 +8,16 @@ COPY package.json package-lock.json panda.config.ts ./
 RUN npm ci
 
 COPY . .
+
+# --- Development server (Compose publishes it on localhost:3000) ---------------
+FROM source AS development
+
+ENV VITE_BASE_API_URL=/api
+EXPOSE 3000
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000", "--strictPort"]
+
+# --- Build the static bundle ---------------------------------------------------
+FROM source AS build
 
 # Base URL of the API as seen by the browser. `/api` is relative to the site itself and
 # is proxied to the server by Caddy (see Caddyfile), so no host/port is baked in.

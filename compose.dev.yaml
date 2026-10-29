@@ -1,4 +1,4 @@
-# Development API + portal database. Start the host grading broker first.
+# Development frontend, API and portal database. The host broker is required for grading.
 name: dbs2-task-checker-dev
 
 x-server-env: &server-env
@@ -13,17 +13,42 @@ x-server-env: &server-env
   PORTAL_LOGIN_COMMAND: "${PORTAL_LOGIN_COMMAND:-portal-login}"
 
 services:
+  web:
+    build:
+      context: ./web
+      dockerfile: Containerfile
+      target: development
+    image: dbs2-task-checker-web-dev
+    environment:
+      VITE_BASE_API_URL: /api
+      API_PROXY_TARGET: http://server:8080
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./web/src:/app/src:ro,z
+      - ./web/index.html:/app/index.html:ro,z
+      - ./web/vite.config.ts:/app/vite.config.ts:ro,z
+      - ./web/panda.config.ts:/app/panda.config.ts:ro,z
+      - ./web/postcss.config.cjs:/app/postcss.config.cjs:ro,z
+    depends_on:
+      server:
+        condition: service_healthy
+
   # Bun / Elysia API from the working tree; `bun --watch` restarts it on every change.
   server:
     cpus: 2
     mem_limit: 1g
     pids_limit: 128
-    build: ./server
+    build:
+      context: ./server
+      dockerfile: Containerfile
     image: dbs2-task-checker-server
+    init: true
     command: ["bun", "run", "--watch", "src/index.ts"]
     environment:
       <<: *server-env
       NODE_ENV: development
+      FORCE_USER: "${FORCE_USER:-student}"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -36,6 +61,12 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:8080/datasets'); if (!r.ok || !(await r.json()).ok) process.exit(1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   # One-shot: creates portal identities only.
   seed:

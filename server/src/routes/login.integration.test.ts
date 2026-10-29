@@ -11,6 +11,8 @@ integration('browser challenge -> private SSH approval -> expiring JWT, without 
   const dir = mkdtempSync(join(tmpdir(), 'portal-login-route-'));
   const socket = join(dir, 'approve.sock');
   process.env.PORTAL_LOGIN_SOCKET = socket;
+  process.env.NODE_ENV = 'production';
+  process.env.FORCE_USER = 'admin';
   process.env.JWT_SECRET = 'test-secret-only-not-for-production';
   process.env.DB_CONNECTION_URL = process.env.TEST_LOGIN_DB;
   const client = new MongoClient(process.env.TEST_LOGIN_DB!);
@@ -18,7 +20,8 @@ integration('browser challenge -> private SSH approval -> expiring JWT, without 
   const users = client.db('portal').collection('users');
   await users.insertOne({ user: 'ssh-student', admin: false }); // No password necessary to log in.
   const { LoginRoute } = await import('./login.post');
-  const app = new Elysia().use(LoginRoute).listen(0);
+  const { SessionRoute } = await import('./session.get');
+  const app = new Elysia().use(LoginRoute).use(SessionRoute).listen(0);
   const request = (path: string, body: object) =>
     app.handle(
       new Request(`http://localhost${path}`, {
@@ -28,6 +31,8 @@ integration('browser challenge -> private SSH approval -> expiring JWT, without 
       }),
     );
   try {
+    const unauthenticated = await app.handle(new Request('http://localhost/session'));
+    expect((await unauthenticated.json()).ok).toBe(false);
     const start = await request('/login/start', {});
     expect(start.headers.get('Cache-Control')).toBe('no-store');
     const challenge = (await start.json()).data;
