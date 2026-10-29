@@ -52,6 +52,7 @@ See [SSH login](server/scripts/host/PORTAL-LOGIN.md) for transport limitations.
 
 | Variable                      | Default                                    | Description                                                  |
 | ----------------------------- | ------------------------------------------ | ------------------------------------------------------------ |
+| `FORCE_USER`                 | `student` (development Compose)             | `student` or `admin` to skip authentication in development; ignored in production |
 | `JWT_SECRET`                  | –                                          | Secret for signing session tokens. Required.                 |
 | `DB_CONNECTION_URL`           | `mongodb://host.containers.internal:27017` | Portal database                                              |
 | `MONGO_SANDBOX_HOST` / `_PORT`| `host.containers.internal` / `42222`       | Personal MongoDB monitoring only                             |
