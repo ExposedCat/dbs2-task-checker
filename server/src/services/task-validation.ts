@@ -23,7 +23,7 @@ export function validateTask(task: Dataset['bank'][number]): string | null {
   ) {
     return 'Test must be a nonempty verification query';
   }
-  if (task.orderMatters !== undefined && typeof task.orderMatters !== 'boolean')
+  if (task.orderMatters != null && typeof task.orderMatters !== 'boolean')
     return 'OrderMatters must be a boolean';
   return null;
 }

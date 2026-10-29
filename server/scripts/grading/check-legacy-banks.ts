@@ -5,6 +5,7 @@ import { compareTaskResults } from '../../src/services/grading';
 import { validateTask } from '../../src/services/task-validation';
 import type { Dataset } from '../../src/services/dataset';
 import type { ReferenceResult } from '../../src/services/reference-cache';
+import { withExecutionScope } from '../../src/services/execute/context';
 
 if (!process.env.LEGACY_BANKS_FILE || process.env.RUN_LEGACY_BANK_INTEGRATION !== '1') {
   throw new Error('Set LEGACY_BANKS_FILE and RUN_LEGACY_BANK_INTEGRATION=1; use only disposable grading engines');
@@ -14,7 +15,7 @@ let checked = 0;
 const failures: string[] = [];
 for (const dataset of datasets) {
   if (process.env.LEGACY_DATASET_ID && dataset.id !== process.env.LEGACY_DATASET_ID) continue;
-  const run = async (task: Dataset['bank'][number]): Promise<ReferenceResult> => {
+  const run = async (task: Dataset['bank'][number]): Promise<ReferenceResult> => withExecutionScope(async () => {
     const result = await execute({
       datasetId: dataset.id as DatasetName,
       queries: task.solution,
@@ -32,7 +33,7 @@ for (const dataset of datasets) {
       testResponse: verified?.ok ? verified.data.response : null,
       testComparisonResponse: verified?.ok ? verified.data.comparisonResponse : undefined,
     };
-  };
+  });
   for (const [index, task] of dataset.bank.entries()) {
     try {
       const shapeError = validateTask(task);

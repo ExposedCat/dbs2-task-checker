@@ -2,7 +2,7 @@ FROM docker.io/oven/bun:1
 
 WORKDIR /app
 
-# Queries run in an isolated host-managed executor, never in the API container.
+# MongoDB JavaScript runs in the separate Compose executor, never in the API container.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssh-client \
   && rm -rf /var/lib/apt/lists/*

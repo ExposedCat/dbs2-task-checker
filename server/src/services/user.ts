@@ -451,8 +451,8 @@ export async function executeQuestion({
       datasetHash,
       solution: currentTask.solution,
       test: currentTask.test,
-      executorVersion: `automatic-state-v4:${process.env.REFERENCE_CACHE_VERSION ?? 'executor-v1'}`,
-      scope: 'shared-private-grading-v1',
+      executorVersion: `scoped-databases-v5:${process.env.REFERENCE_CACHE_VERSION ?? 'executor-v1'}`,
+      scope: 'compose-grading-v1',
     },
     async () => {
       const correctResult = await execute({

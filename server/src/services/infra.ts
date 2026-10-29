@@ -1,4 +1,4 @@
-import { createConnection, type NetConnectOpts } from 'node:net';
+import { type NetConnectOpts, createConnection } from 'node:net';
 
 import type { Database } from './database';
 import type { ServiceResponse } from './response';
@@ -114,11 +114,15 @@ async function probeRedis(host: string, port: number): Promise<ProbeResult> {
   }
 }
 
-export async function probeGradingRedis(path: string | undefined): Promise<ProbeResult> {
-  if (!path) return { ok: false, latencyMs: null, detail: 'Grading Redis socket is not configured' };
+export async function probeGradingRedis(endpoint: string | undefined): Promise<ProbeResult> {
+  if (!endpoint) return { ok: false, latencyMs: null, detail: 'Grading Redis is not configured' };
   try {
     return await timed(async () => {
-      const reply = await socketProbe({ path }, '*1\r\n$4\r\nPING\r\n');
+      const url = endpoint.startsWith('redis://') ? new URL(endpoint) : null;
+      const reply = await socketProbe(
+        url ? { host: url.hostname, port: Number(url.port || 6379) } : { path: endpoint },
+        '*1\r\n$4\r\nPING\r\n',
+      );
       const ok = reply === '+PONG\r\n';
       return { ok, detail: ok ? null : `Unexpected reply: ${reply.trim().slice(0, 60)}` };
     });
@@ -186,13 +190,20 @@ export async function checkInfra({ database }: CheckInfraArgs): Promise<ServiceR
     Promise.all(
       users.map(async ({ user, port }): Promise<RedisInstanceStatus> => {
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
-          return { user, port: null, status: 'unconfigured', ok: false, latencyMs: null, detail: 'No valid Redis port assigned' };
+          return {
+            user,
+            port: null,
+            status: 'unconfigured',
+            ok: false,
+            latencyMs: null,
+            detail: 'No valid Redis port assigned',
+          };
         }
         const result = await probeRedis(REDIS_SANDBOX_HOST, port);
         return { user, port, ...result, status: result.ok ? 'up' : 'down' };
       }),
     ),
-    probeGradingRedis(process.env.REDIS_GRADING_SOCKET),
+    probeGradingRedis(process.env.REDIS_GRADING_URL),
   ]);
 
   return {

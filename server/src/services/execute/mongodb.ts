@@ -1,11 +1,12 @@
-import { normalizeMongoSnapshot, type StateObservation } from '../state-comparison';
+import { type StateObservation, normalizeMongoSnapshot } from '../state-comparison';
+import { mongoExecutionId } from './context';
+import { mongoExecutor } from './executor';
 import type { BaseExecuteArgs, ExecuteResult } from './index';
 import { prepareMongoResult } from './mongo-results';
-import { gradingBroker } from './broker';
 
 type MongoStateWire = Omit<StateObservation, 'before' | 'after'> & { before: string; after: string };
 
-// No student credentials or local mongosh execution in the portal process.
+// Submitted JavaScript runs in the pre-started executor, never in the API process.
 export async function executeMongoDb({
   queries,
   noReset = false,
@@ -13,13 +14,14 @@ export async function executeMongoDb({
   captureState = false,
 }: BaseExecuteArgs): Promise<ExecuteResult> {
   try {
-    const result = await gradingBroker<{
+    const result = await mongoExecutor<{
       response: string;
       skipped?: boolean;
       protocolVersion?: number;
       state?: MongoStateWire;
     }>('/mongo', {
       queries: [prepareMongoResult(queries)],
+      executionId: mongoExecutionId(),
       noReset,
       readOnly,
       captureState,
@@ -28,7 +30,7 @@ export async function executeMongoDb({
       return {
         ok: false,
         data: null,
-        error: 'Grading broker update required (automatic state comparison)',
+        error: 'MongoDB executor update required (automatic state comparison)',
       };
     }
     if (!result.ok) return result;

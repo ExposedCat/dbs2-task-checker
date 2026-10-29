@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
-import { SubmissionQueue } from './limits';
+import { SubmissionQueue, withSubmissionSlot } from './limits';
 import { runProcess } from './process';
 
 test('kills an executor that exceeds its deadline', async () => {
-  const result = await runProcess([process.execPath, '-e', 'setInterval(() => {}, 1000)'], 100);
+  const result = await runProcess([process.execPath, '-e', 'setInterval(() => undefined, 1000)'], 100);
   expect(result).toEqual({
     ok: false,
     output: 'Execution time limit exceeded',
@@ -41,7 +41,7 @@ test('runs complete jobs in FIFO order, bounds waiting jobs, and releases after 
     events.push('second');
     return 'done';
   });
-  await expect(queue.run(async () => {})).rejects.toThrow('full');
+  await expect(queue.run(async () => undefined)).rejects.toThrow('full');
   expect(events).toEqual(['first-start']);
   release();
   expect((await rejected).message).toBe('failed');
@@ -69,4 +69,25 @@ test('expired queued work is removed and never runs', async () => {
   await first;
   expect(ran).toBe(false);
   expect(await queue.run(async () => 'next')).toBe('next');
+});
+
+test('MongoDB sessions run independently while requests for the same session serialize', async () => {
+  let release!: () => void;
+  const events: string[] = [];
+  const first = withSubmissionSlot(async () => {
+    events.push('first');
+    await new Promise<void>(resolve => {
+      release = resolve;
+    });
+  }, 'student:session-one');
+  const sameSession = withSubmissionSlot(async () => {
+    events.push('same-session');
+  }, 'student:session-one');
+  await withSubmissionSlot(async () => {
+    events.push('other-session');
+  }, 'other:session-two');
+  expect(events).toEqual(['first', 'other-session']);
+  release();
+  await Promise.all([first, sameSession]);
+  expect(events).toEqual(['first', 'other-session', 'same-session']);
 });

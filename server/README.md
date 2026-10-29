@@ -19,23 +19,25 @@ This code is licensed under the EUPL-1.2-only license
 
 ## Execution and login
 
-See [private grading deployment](scripts/grading/README.md) and
+See [Compose grading services](scripts/grading/README.md) and
 [SSH code login](scripts/host/PORTAL-LOGIN.md). No student passwords are stored or used.
-MongoDB submissions execute in disposable containers; Redis uses a private shared socket.
+MongoDB submissions execute as restricted processes in a persistent Compose service, using
+a separate database and credentials per grading attempt. Redis uses a private Compose network.
 Personal student databases are independent of grading.
 
 ## Query resource limits
 
 The API accepts 100 commands, 16,384 characters per command, 64 KiB total command text,
-and a 1 MiB request body. One complete grading job runs at a time, with up to 16 waiting
-jobs and a 120-second queue wait limit. There is no per-user or multi-tab lock.
+and a 1 MiB request body. Redis grading jobs serialize through one queue, with up to 16
+waiting jobs and a 120-second queue wait limit. MongoDB jobs serialize per user/session,
+while different sessions can execute independently (up to four executor requests at once).
 One API process is supported; multiple replicas require a shared queue.
 
 Each MongoDB job has a shared 20-second deadline; each shell has a 1 MiB stdout/stderr
 budget. Automatic state observation adds trusted before/after shells under that deadline.
 Redis has a 15-second deadline and 1 MiB budgets for replies and each state observation.
 A cold grade runs both reference and student jobs plus any existing verification queries. Failed/timed-out MongoDB operations
-recreate its grading instance; Redis timeouts/transport failures restart Redis before
+remove only their own database and credentials; Redis timeouts/transport failures restart Redis before
 returning. The API has 2 CPUs/1 GiB/128 processes; grading containers have separate limits.
 
 ## Reference result cache
@@ -46,19 +48,18 @@ it; a hit reuses it. Student execution always resets/loads independently afterwa
 Failed references are not cached; skipped submissions do not compute references.
 
 Keys hash dataset ID, runtime dataset contents, session solution and verification query,
-`REFERENCE_CACHE_VERSION`, and a fixed shared grading scope. Results are shared across users.
+`REFERENCE_CACHE_VERSION`, and a fixed logical grading scope. Results are shared across users.
 Existing sessions retain their task snapshots. Dataset changes during grading reject the
 operation. Entries expire after 30 days, enforced during lookup and by a MongoDB TTL index.
 Bump `REFERENCE_CACHE_VERSION` for engine/module versions or grading semantic changes.
 Engine adapters normalize generated IDs and expiry as described below; arbitrary random/time
 answers remain nondeterministic. Row ordering follows the task contract below. Cache storage
-is never accessible to submission containers.
+is never accessible to submitted processes.
 
 Tests: `bun test src/services/execute/limits.test.ts src/services/reference-cache.test.ts
 src/services/grading-cache.test.ts src/services/portal-login.test.ts`.
-Redis integration requires `RUN_REDIS_INTEGRATION=1` and `REDIS_GRADING_SOCKET` pointing at
-a disposable Redis Stack socket with the grading ACL, plus a disposable grading broker for
-restart recovery. Never run it against the live grading instance. Reference persistence integration requires `TEST_REFERENCE_DB`
+Redis integration requires `RUN_REDIS_INTEGRATION=1`, `REDIS_GRADING_URL`, and
+`REDIS_GRADING_PASSWORD` pointing at disposable Compose grading services. Never run it against the live grading instance. Reference persistence integration requires `TEST_REFERENCE_DB`
 pointing at a disposable MongoDB (writes its `portal` database).
 
 ## Grading contract and question-bank validation
@@ -80,14 +81,14 @@ Redis observations include key types, values, expiry, Search index definitions a
 hash/set order is normalized, list order is retained. Expiry times compare relative to execution
 start with one second of tolerance. Untouched generated seed stream IDs are excluded from state
 changes and normalized by stream/entry identity in stream query results. MongoDB observations
-run in separate disposable containers using restricted read credentials, capturing collection
+run in separate restricted processes using read credentials, capturing collection
 data, options and index definitions. Document order is ignored and array/compound-index order
 is retained. Generated ObjectIds are matched from seed/inserted document identity; ObjectId
 literals in the reference remain significant. Arbitrary time/random-dependent results still
 need deterministic execution; the checker cannot infer unrestricted application semantics.
 
 Before adding imported questions, the API validates every entry and executes each reference
-and any existing verifier against fresh data while holding the shared grading slot. Invalid
+and any existing verifier against fresh data in an isolated execution scope. Invalid
 banks are rejected as a whole. No `Test` is required for write references. Existing session
 snapshots are checked for empty/invalid solutions before execution as well.
 
@@ -113,13 +114,21 @@ updates. Unfinished responses contain only `{ result: null }`. Final responses c
 `result`, `passed`, `minPoints`, and `wrong`; early quit omits questions not yet displayed.
 Active legacy sessions acquire IDs at API startup without losing saved answers.
 
-Deploy the updated broker together with the API: MongoDB execution requires broker protocol
-3 and rejects older brokers. The grading cache uses a new semantic version automatically.
+Rebuild the Compose services together with the API. MongoDB execution uses protocol 3;
+the grading cache uses a new semantic version automatically.
 
-Regression tests: `bun test`. Disposable engine integration tests:
-`RUN_GRADING_INTEGRATION=1 python scripts/grading/test_broker.py -v` (rootless Podman and
-`docker.io/library/mongo:8`, configurable with `TEST_MONGO_IMAGE`), plus the Redis integration
-command above. The Mongo fixture uses uniquely named containers/volumes and removes them.
+Regression tests: `bun test`. From the repository root, run MongoDB integration tests
+inside a disposable executor:
+
+```sh
+podman-compose -f compose.dev.yaml exec -T -e RUN_GRADING_INTEGRATION=1 mongo-executor \
+  python3 -c 'import sys; __file__="/opt/grading/test_executor.py"; exec(sys.stdin.read())' \
+  < server/scripts/grading/test_executor.py
+```
+
+Use a test copy of the Compose project with separate portal/grading volumes. The executor
+integration tests create unique scopes, verify concurrency, permissions, limits and cleanup,
+and remove their own data. Redis integration uses the variables described above.
 
 An exported existing bank can be checked without editing it using:
 `RUN_LEGACY_BANK_INTEGRATION=1 LEGACY_BANKS_FILE=/path/to/export.json bun scripts/grading/check-legacy-banks.ts`.

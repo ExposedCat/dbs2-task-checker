@@ -1,4 +1,6 @@
-// Limits apply per API process. Deployment limits are an additional backstop.
+import { withExecutionScope } from './context';
+
+// Limits apply per API process. Container limits are an additional backstop.
 export const MAX_QUERIES = 100;
 export const MAX_QUERY_LENGTH = 16_384;
 export const MAX_QUERY_BYTES = 64 * 1024;
@@ -49,4 +51,28 @@ export class SubmissionQueue {
 }
 
 const submissions = new SubmissionQueue();
-export const withSubmissionSlot = <T>(run: () => Promise<T>) => submissions.run(run);
+const mongoSubmissions = new Map<string, SubmissionQueue>();
+
+/** Redis owns the shared reset slot; MongoDB scopes can execute independently. */
+export const withSubmissionSlot = async <T>(run: () => Promise<T>, mongoScope?: string): Promise<T> => {
+  if (!mongoScope) return submissions.run(() => withExecutionScope(run));
+  let entry = mongoSubmissions.get(mongoScope);
+  if (!entry) {
+    entry = new SubmissionQueue();
+    mongoSubmissions.set(mongoScope, entry);
+  }
+  // Keep the keyed queue while any active or waiting caller still uses it.
+  const queue = entry;
+  mongoQueueUsers.set(queue, (mongoQueueUsers.get(queue) ?? 0) + 1);
+  try {
+    return await queue.run(() => withExecutionScope(run));
+  } finally {
+    const remaining = mongoQueueUsers.get(queue)! - 1;
+    if (remaining) mongoQueueUsers.set(queue, remaining);
+    else {
+      mongoQueueUsers.delete(queue);
+      mongoSubmissions.delete(mongoScope);
+    }
+  }
+};
+const mongoQueueUsers = new Map<SubmissionQueue, number>();

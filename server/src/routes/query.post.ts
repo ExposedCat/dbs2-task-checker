@@ -1,6 +1,6 @@
 import Elysia, { t } from 'elysia';
 import { RequireAuth } from '../middlewares/auth';
-import { MAX_QUERIES, MAX_QUERY_LENGTH, MAX_QUERY_BYTES, withSubmissionSlot } from '../services/execute/limits';
+import { MAX_QUERIES, MAX_QUERY_BYTES, MAX_QUERY_LENGTH, withSubmissionSlot } from '../services/execute/limits';
 import { executeQuestion, getUser } from '../services/user';
 
 export const QueryRoute = new Elysia({ name: 'Route.Query' }).use(RequireAuth).post(
@@ -14,12 +14,15 @@ export const QueryRoute = new Elysia({ name: 'Route.Query' }).use(RequireAuth).p
       };
     }
     try {
-      return await withSubmissionSlot(async () => {
-        // IDs are captured in the request, never rebound to a new task after a queue wait.
-        const currentUser = await getUser({ database, userId: user._id.toString() });
-        if (!currentUser) return { ok: false as const, data: null, error: 'Unauthorized' };
-        return executeQuestion({ ...body, database, user: currentUser });
-      });
+      return await withSubmissionSlot(
+        async () => {
+          // IDs are captured in the request, never rebound to a new task after a queue wait.
+          const currentUser = await getUser({ database, userId: user._id.toString() });
+          if (!currentUser) return { ok: false as const, data: null, error: 'Unauthorized' };
+          return executeQuestion({ ...body, database, user: currentUser });
+        },
+        user.testSession?.datasetId === 'mongodb' ? `${user._id}:${body.sessionId}` : undefined,
+      );
     } catch (error) {
       return {
         ok: false,

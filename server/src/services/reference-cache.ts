@@ -16,8 +16,7 @@ export type ReferenceIdentity = {
   solution: string[];
   test: string | null;
   executorVersion: string;
-  // Current execution uses personal databases. Remove this scope only after moving to
-  // the shared, isolated grading environment; references can include database names.
+  // Engine adapters normalize internal workspace names to keep cached results portable.
   scope: string;
 };
 
@@ -56,7 +55,7 @@ export async function getOrComputeReference(
     };
 
   // Only successful trusted reference executions may populate this collection.
-  // Caller holds the grading queue slot throughout lookup, computation, and submission.
+  // Caller holds its execution scope throughout lookup, computation, and submission.
   const result = await compute();
   const createdAt = new Date();
   await collection.updateOne(

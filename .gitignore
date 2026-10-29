@@ -10,3 +10,6 @@ secrets/
 
 # Local Unix socket for SSH login approval
 run/
+
+# Python helper bytecode
+__pycache__/

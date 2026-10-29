@@ -1,4 +1,4 @@
-# Development frontend, API and portal database. The host broker is required for grading.
+# Complete development stack; no host grading services or container-engine socket required.
 name: dbs2-task-checker-dev
 
 x-server-env: &server-env
@@ -6,8 +6,9 @@ x-server-env: &server-env
   REFERENCE_CACHE_VERSION: "${REFERENCE_CACHE_VERSION:-executor-v1}"
   JWT_SECRET: dev-secret-not-for-production
   DB_CONNECTION_URL: mongodb://mongo:27017
-  GRADING_BROKER_SOCKET: /run/grading/broker.sock
-  REDIS_GRADING_SOCKET: /run/grading-redis/redis.sock
+  MONGO_EXECUTOR_SOCKET: /run/execution/mongo.sock
+  REDIS_GRADING_URL: redis://grading-redis:6379
+  REDIS_GRADING_PASSWORD: "${GRADING_REDIS_PASSWORD:-development-redis}"
   PORTAL_LOGIN_SOCKET: /run/portal-login/approve.sock
   PORTAL_LOGIN_SOCKET_MODE: "666"
   PORTAL_LOGIN_COMMAND: "${PORTAL_LOGIN_COMMAND:-portal-login}"
@@ -54,12 +55,18 @@ services:
     volumes:
       - ./server/src:/app/src:ro,z
       - ./server/scripts:/app/scripts:ro,z
-      - ./server/datasets:/app/datasets:ro,z
+      - "${DATASETS_DIR:-./server/datasets}:/app/datasets:ro,z"
       - "${PORTAL_LOGIN_DIR:-./run/login}:/run/portal-login:z"
-      - "${GRADING_CONTROL_DIR:-../grading/control}:/run/grading:ro,z"
-      - grading-redis-socket:/run/grading-redis
+      - mongo-execution:/run/execution
+    networks:
+      - default
+      - redis-grading
     depends_on:
       mongo:
+        condition: service_healthy
+      mongo-executor:
+        condition: service_healthy
+      grading-redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:8080/datasets'); if (!r.ok || !(await r.json()).ok) process.exit(1)"]
@@ -100,8 +107,126 @@ services:
       retries: 20
       start_period: 10s
 
+  # Separate from the portal database. Each grading attempt gets its own scoped database.
+  grading-mongo:
+    image: docker.io/library/mongo:8
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: "${GRADING_MONGO_PASSWORD:-development-mongo}"
+    read_only: true
+    tmpfs:
+      - /data/db:rw,size=768m
+      - /data/configdb:rw,size=16m
+      - /tmp:rw,size=32m,mode=1777
+    networks: [mongo-grading]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Persistent client executor: starts mongosh processes, never containers.
+  mongo-executor:
+    build:
+      context: ./server/scripts/grading
+      dockerfile: Containerfile
+    image: dbs2-task-checker-mongo-executor
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, KILL, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+    environment:
+      GRADING_MONGO_HOST: grading-mongo
+      GRADING_MONGO_PASSWORD: "${GRADING_MONGO_PASSWORD:-development-mongo}"
+    volumes:
+      - mongo-execution:/run/execution
+      - "${DATASETS_DIR:-./server/datasets}/mongodb:/datasets:ro,z"
+    tmpfs:
+      - /tmp:rw,size=256m,mode=1777
+    networks: [mongo-grading]
+    depends_on:
+      grading-mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/run/execution/mongo.sock'); s.close()"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  grading-redis:
+    image: docker.io/redis/redis-stack-server:7.4.0-v8
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    tmpfs:
+      - /data:rw,size=256m
+    networks: [redis-grading]
+    command:
+      - redis-server
+      - --protected-mode
+      - "no"
+      - --loadmodule
+      - /opt/redis-stack/lib/redisearch.so
+      - --loadmodule
+      - /opt/redis-stack/lib/rejson.so
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --databases
+      - "1"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - noeviction
+      - --client-output-buffer-limit
+      - "normal 1048576 0 0"
+      - --lua-time-limit
+      - "1000"
+      - --user
+      - "default"
+      - "on"
+      - "nopass"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - "-@admin"
+      - "-migrate"
+      - "-restore-asking"
+      - --user
+      - "admin"
+      - "on"
+      - ">${GRADING_REDIS_PASSWORD:-development-redis}"
+      - "~*"
+      - "&*"
+      - "+@all"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   mongo-data:
-  grading-redis-socket:
-    external: true
-    name: dbs-grading-redis-socket
+  mongo-execution:
+
+networks:
+  default:
+  mongo-grading:
+    internal: true
+  redis-grading:
+    internal: true

@@ -1,14 +1,13 @@
-import { prepareRedisCommand } from './redis-command';
-import { redisSnapshot, normalizeStreamReply } from './redis-state';
-import { redisComparisonReply } from './redis-results';
-import type { ComparisonReply } from '../comparison';
 import { ErrorReply, createClient } from 'redis';
+import type { ComparisonReply } from '../comparison';
 import { parseCommand } from '../escape.js';
 import type { BaseExecuteArgs, ExecuteResult } from './index.js';
 import { EXECUTION_TIMEOUT_MS, MAX_OUTPUT_BYTES } from './limits';
-import { gradingBroker } from './broker';
+import { prepareRedisCommand } from './redis-command';
+import { recoverRedis } from './redis-recovery';
+import { redisComparisonReply } from './redis-results';
+import { normalizeStreamReply, redisSnapshot } from './redis-state';
 
-const REDIS_GRADING_SOCKET = process.env.REDIS_GRADING_SOCKET;
 export type ExecuteRedisArgs = BaseExecuteArgs & { dataset: string[][] };
 
 export async function executeRedis({
@@ -18,22 +17,23 @@ export async function executeRedis({
   readOnly = false,
   captureState = false,
 }: ExecuteRedisArgs): Promise<ExecuteResult> {
-  if (!REDIS_GRADING_SOCKET) return { ok: false, data: null, error: 'Private Redis grading socket is not configured' };
+  if (!process.env.REDIS_GRADING_URL)
+    return { ok: false, data: null, error: 'Redis grading service is not configured' };
   const client = createClient({
+    url: process.env.REDIS_GRADING_URL,
     socket: {
-      path: REDIS_GRADING_SOCKET,
       connectTimeout: 5000,
       reconnectStrategy: false,
     },
     disableOfflineQueue: true,
   });
   // node-redis emits transport errors as well as rejecting command promises.
-  client.on('error', () => {});
+  client.on('error', () => undefined);
   let expired = false;
   let commandIndex = -1;
   const normalizedQueries = queries.map(query => query.trim()).filter(Boolean);
   const close = async () => {
-    if (client.isOpen) await client.disconnect().catch(() => {});
+    if (client.isOpen) await client.disconnect().catch(() => undefined);
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
@@ -120,8 +120,11 @@ export async function executeRedis({
   } catch (error) {
     if (expired || !(error instanceof ErrorReply)) {
       await close();
-      const recovery = await gradingBroker('/redis-restart', {});
-      if (!recovery.ok) return { ok: false, data: null, error: 'Redis recovery failed; grading is unavailable' };
+      try {
+        await recoverRedis();
+      } catch {
+        return { ok: false, data: null, error: 'Redis recovery failed; grading is unavailable' };
+      }
     }
     const position =
       commandIndex >= 0 && normalizedQueries.length > 1

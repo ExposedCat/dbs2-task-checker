@@ -1,5 +1,5 @@
 [Unit]
-Description=Private DBS grading databases and execution broker
+Description=DBS SSH login approval
 After=network-online.target
 
 [Service]

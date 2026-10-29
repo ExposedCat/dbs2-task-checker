@@ -1,4 +1,4 @@
-# Adds only the portal DB; the separate host grading broker is still required.
+# Adds the portal database; grading services are already defined in compose.yaml.
 services:
   server:
     environment:

@@ -1,0 +1,8 @@
+FROM docker.io/library/mongo:8
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/grading
+COPY executor.py sandbox.py bootstrap.cjs ./
+RUN chmod 644 /opt/grading/* && mkdir -p /run/execution && chmod 700 /root
+ENTRYPOINT ["/usr/bin/python3", "-I", "/opt/grading/executor.py"]

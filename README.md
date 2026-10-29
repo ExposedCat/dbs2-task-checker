@@ -1,15 +1,15 @@
 # CTU | DBS2 | Task Checker
 
 Monorepo of the DBS2 Task Checker portal: students run Redis / MongoDB queries against
-isolated shared grading databases and get graded. Student passwords are not stored.
+isolated grading databases and get graded. Student passwords are not stored.
 
 ```
 web/                    React + Vite frontend (served by Caddy, which also proxies the API)
 server/                 Bun + Elysia API
 redis-sandbox/          Optional: image running one RediSearch-enabled Redis per student
-compose.yaml            web + server, using databases that already run on the host
-compose.local-db.yaml   Overlay adding the portal database; host grading broker still required
-compose.dev.yaml        Frontend, API and portal database with hot reload and a forced development user
+compose.yaml            web + server + grading services, using a portal database on the host
+compose.local-db.yaml   Overlay adding the portal database
+compose.dev.yaml        Complete local stack with hot reload and a forced development user
 ```
 
 ## How it fits together
@@ -19,8 +19,8 @@ browser ──:80/443──> web (Caddy)
                       ├── /        static React bundle
                       └── /api/*   ──> server:8080 (prefix stripped)
                                         ├── portal MongoDB      users, question banks, submissions   (DB_CONNECTION_URL)
-                                        ├── grading broker      disposable mongosh containers, shared private MongoDB
-                                        └── grading Redis       shared private Unix socket, reset per job
+                                        ├── MongoDB executor    client processes, separate database per grading attempt
+                                        └── grading Redis       private Compose service, reset per job
 ```
 
 - In `compose.yaml`, only `web` publishes ports: **80** (and 443), so the URL needs no port.
@@ -35,7 +35,7 @@ browser ──:80/443──> web (Caddy)
 ## Portal database and accounts
 
 The optional `compose.local-db.yaml` overlay adds a portal MongoDB. Both database configurations
-require the separate [host grading broker](server/scripts/grading/README.md).
+include the [Compose grading services](server/scripts/grading/README.md).
 Runtime datasets go in `server/datasets/`; admins upload question banks through the UI.
 
 ```sh
@@ -50,9 +50,13 @@ See [SSH login](server/scripts/host/PORTAL-LOGIN.md) for transport limitations.
 
 ## Configuration (`.env`)
 
+For production, copy `.env.example` to `.env` and set the JWT and grading database secrets.
+Development Compose supplies local defaults and needs no `.env` file.
+
 | Variable                      | Default                                    | Description                                                  |
 | ----------------------------- | ------------------------------------------ | ------------------------------------------------------------ |
 | `FORCE_USER`                 | `student` (development Compose)             | `student` or `admin` to skip authentication in development; ignored in production |
+| `GRADING_MONGO_PASSWORD` / `GRADING_REDIS_PASSWORD` | Development defaults only | Required production secrets for the private grading services |
 | `JWT_SECRET`                  | –                                          | Secret for signing session tokens. Required.                 |
 | `DB_CONNECTION_URL`           | `mongodb://host.containers.internal:27017` | Portal database                                              |
 | `MONGO_SANDBOX_HOST` / `_PORT`| `host.containers.internal` / `42222`       | Personal MongoDB monitoring only                             |
@@ -68,27 +72,19 @@ For rootless Podman, set `WEB_HTTP_PORT=8080` if binding port 80 is unavailable.
 
 ## Local development
 
-The portal's Compose files are compatible with **Docker Compose** and **Podman Compose**.
-The separate Linux grading broker currently uses Podman; configure it using
-[the broker guide](server/scripts/grading/README.md) before starting the portal.
-Copy `.env.example` to `.env` and set `GRADING_CONTROL_DIR` and `PORTAL_LOGIN_DIR` to
-match the broker's socket directories. Runtime datasets belong in `server/datasets/`.
+The stack supports **Docker Compose** and **Podman Compose**. All grading services start
+with Compose; no host grading broker, container-engine socket, or external volumes are needed.
+Runtime datasets belong in `server/datasets/`.
 
-`compose.dev.yaml` starts the frontend, API and portal MongoDB. Node, npm and Bun run
+`compose.dev.yaml` starts the frontend, API, portal MongoDB and grading services. Node, npm and Bun run
 inside the containers; you do not need them installed locally. Frontend and API source
-changes reload automatically. For Docker Engine on Linux, first expose the broker's Redis
-socket directory as a Docker volume (Docker and Podman have separate volume stores):
+changes reload automatically. Start the development stack with:
 
 ```sh
-docker volume create --driver local \
-  --opt type=none --opt o=bind \
-  --opt device="$(podman volume inspect dbs-grading-redis-socket --format '{{.Mountpoint}}')" \
-  dbs-grading-redis-socket
-
 docker compose -f compose.dev.yaml up -d --build
 ```
 
-With Podman Compose, use:
+Or with Podman:
 
 ```sh
 podman-compose -f compose.dev.yaml up -d --build
@@ -107,7 +103,7 @@ FORCE_USER=admin docker compose -f compose.dev.yaml up -d
 
 Refresh the browser after changing accounts. Use `FORCE_USER=student` to switch back.
 This override applies only with `NODE_ENV=development`; production uses SSH code approval.
-The grading broker is still needed to execute student queries.
+Use `podman-compose` in the account-switch command when running Podman.
 
 See `web/README.md` and `server/README.md` for package details.
 

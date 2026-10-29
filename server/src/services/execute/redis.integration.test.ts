@@ -3,8 +3,8 @@ import { createClient } from 'redis';
 import { executeRedis } from './redis';
 import { MAX_OUTPUT_BYTES } from './limits';
 
-// Use a disposable instance with a private Unix socket and the production non-admin ACL.
-const integration = process.env.RUN_REDIS_INTEGRATION === '1' && process.env.REDIS_GRADING_SOCKET ? test : test.skip;
+// Use a disposable instance with a private network and the production non-admin ACL.
+const integration = process.env.RUN_REDIS_INTEGRATION === '1' && process.env.REDIS_GRADING_URL ? test : test.skip;
 integration('loads dataset without credentials and denies administration', async () => {
   expect(await executeRedis({ dataset: [['SET', 'sample', 'value']], queries: ['GET sample'] })).toMatchObject({
     ok: true,
@@ -16,7 +16,7 @@ integration('loads dataset without credentials and denies administration', async
   if (!rejected.ok) expect(rejected.error).toContain('NOPERM');
 });
 integration('rejects oversized output', async () => {
-  const client = createClient({ socket: { path: process.env.REDIS_GRADING_SOCKET! } });
+  const client = createClient({ url: process.env.REDIS_GRADING_URL! });
   await client.connect();
   try {
     await client.set('large', 'x'.repeat(MAX_OUTPUT_BYTES + 1));
@@ -26,6 +26,18 @@ integration('rejects oversized output', async () => {
   const result = await executeRedis({ dataset: [], noReset: true, queries: ['GET large'] });
   expect(result.ok).toBe(false);
 });
+
+integration('recovers an unkillable write script through the Compose restart policy', async () => {
+  const result = await executeRedis({
+    dataset: [],
+    queries: [`EVAL "redis.call('SET', 'busy', '1'); while true do end" 0`],
+  });
+  expect(result).toMatchObject({ ok: false, error: 'Execution time limit exceeded' });
+  expect(await executeRedis({ dataset: [], queries: ['PING'] })).toMatchObject({
+    ok: true,
+    data: { response: '"PONG"\n' },
+  });
+}, 30000);
 
 integration('read-only tasks reject writes and preserve hash field/value associations', async () => {
   const rejected = await executeRedis({ dataset: [], queries: ['SET unrelated Bob'], readOnly: true });

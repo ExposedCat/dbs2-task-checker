@@ -1,9 +1,9 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { ObjectId, type WithId } from 'mongodb';
 import type { Database } from './database';
-import type { User, TestSession } from './user';
 import type { Dataset } from './dataset';
 import type { ReferenceCacheEntry } from './reference-cache';
+import type { TestSession, User } from './user';
 
 const calls: { queries: string[]; noReset: boolean; readOnly: boolean }[] = [];
 let failReference = false;
@@ -46,6 +46,8 @@ mock.module('./execute/dataset-identity', () => ({ executionDatasetHash: async (
 const { executeQuestion, quitTestSession, startTestSession } = await import('./user');
 const { createOrUpdateDataset, setDatasetKinds } = await import('./dataset');
 const { hasPassed } = await import('./test-policy');
+const { validateTask } = await import('./task-validation');
+const { taskOrderMatters } = await import('./task-order');
 beforeEach(() => {
   calls.length = 0;
   failReference = false;
@@ -341,6 +343,20 @@ test('imports reject malformed entries but accept executable legacy writes witho
     ).ok,
   ).toBe(true);
   expect(f.published()).toBe(1);
+});
+
+test('legacy BSON null for optional ordering means infer ordering from the task', () => {
+  const task = JSON.parse(
+    JSON.stringify({
+      question: 'List employees',
+      solution: ['db.employees.find().sort({name:1})'],
+      test: null,
+      orderMatters: null,
+    }),
+  );
+  expect(validateTask(task)).toBeNull();
+  expect(taskOrderMatters(task)).toBe(true);
+  expect(taskOrderMatters({ ...task, orderMatters: false })).toBe(false);
 });
 
 test('unreachable thresholds and category counts are rejected at configuration and start', async () => {

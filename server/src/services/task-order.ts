@@ -2,7 +2,7 @@ import type { Dataset } from './dataset';
 
 /** Existing banks describe ordering in their question/reference, without extra metadata. */
 export function taskOrderMatters(task: Dataset['bank'][number]): boolean {
-  if (task.orderMatters !== undefined) return task.orderMatters;
+  if (typeof task.orderMatters === 'boolean') return task.orderMatters;
   return (
     /\b(sorted|ascending|descending|ordered|order by|ranked)\b/i.test(task.question) ||
     task.solution.some(query =>

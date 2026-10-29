@@ -1,6 +1,6 @@
 # SSH approval login
 
-The deployed implementation uses the host grading broker and Linux SO_PEERCRED. See
+The deployed implementation uses the host SSH approval helper and Linux SO_PEERCRED. See
 [installation and migration](../grading/README.md). It requires no sudo or tunnel.
 The older sudo helper files in this directory are an alternative, not used in production.
 
@@ -16,5 +16,5 @@ avoids sending or storing the reusable student password, but does not make HTTP 
 
 Pending codes are held in one API process and vanish on restart. Creation is limited to
 120 codes/minute and 500 pending codes. Expiration is checked on approval and redemption.
-The broker's public socket only accepts code approval; its private control socket and
-API approval socket must remain inaccessible to student accounts and submission containers.
+The helper's public socket only accepts code approval. The API approval socket must remain
+inaccessible to student accounts and submitted code.

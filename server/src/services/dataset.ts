@@ -1,10 +1,10 @@
-import type { DatasetName } from './execute';
-import { withSubmissionSlot } from './execute/limits';
-import { validateTask, validateReference } from './task-validation';
-import { requiredPoints, validateTestPolicy } from './test-policy';
 import type { Database } from './database.js';
 import { parseCommand } from './escape.js';
+import type { DatasetName } from './execute';
+import { withSubmissionSlot } from './execute/limits';
 import type { ServiceResponse } from './response.js';
+import { validateReference, validateTask } from './task-validation';
+import { requiredPoints, validateTestPolicy } from './test-policy';
 
 export type Dataset = {
   id: string;
@@ -131,7 +131,7 @@ export async function createOrUpdateDataset({
         item.Test === undefined || item.Test === null || (typeof item.Test === 'string' && !item.Test.trim())
           ? null
           : item.Test,
-      orderMatters: item.OrderMatters,
+      ...(item.OrderMatters === undefined ? {} : { orderMatters: item.OrderMatters }),
     };
     const error = validateTask(task);
     if (error) return invalid(`Question ${index + 1}: ${error}`);
@@ -146,15 +146,18 @@ export async function createOrUpdateDataset({
   const policyError = validateTestPolicy(candidate);
   if (policyError) return invalid(policyError);
   try {
-    await withSubmissionSlot(async () => {
-      for (const [index, task] of bank.entries()) {
-        try {
-          await validateReference(id as DatasetName, task);
-        } catch (error) {
-          throw new Error(`Question ${index + 1}: ${error instanceof Error ? error.message : 'Reference failed'}`);
+    await withSubmissionSlot(
+      async () => {
+        for (const [index, task] of bank.entries()) {
+          try {
+            await validateReference(id as DatasetName, task);
+          } catch (error) {
+            throw new Error(`Question ${index + 1}: ${error instanceof Error ? error.message : 'Reference failed'}`);
+          }
         }
-      }
-    });
+      },
+      id === 'mongodb' ? `import:${crypto.randomUUID()}` : undefined,
+    );
   } catch (error) {
     return invalid(error instanceof Error ? error.message : 'Reference validation failed');
   }
